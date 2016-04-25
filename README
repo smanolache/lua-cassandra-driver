@@ -1,0 +1,30 @@
+Build
+=====
+
+Install the C/C++ datastax cassandra driver. Use tag 2.3.0.
+
+cd /path/to/source/tree
+autoreconf -i -s
+
+mkdir /path/to/build/tree
+cd /path/to/build/tree
+# on multiarch amd64:
+/path/to/source/tree/configure --libdir=/usr/lib/x86_64-linux-gnu
+make
+
+Install
+=======
+
+cd /path/to/build/tree
+make install
+
+"make install" will install
+/usr/lib/x86_64-linux-gnu/liblua5.1-cassandra-driver.so
+and make the symlink
+/usr/lib/x86_64-linux-gnu/lua/5.1/db/cassandra.so
+point to it
+
+How to use
+==========
+
+Check src/unit/testDriver for an example.

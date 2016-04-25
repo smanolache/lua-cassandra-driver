@@ -1,0 +1,1 @@
+create table gp (k text primary key, vascii ascii, vbigint bigint, vblob blob, vboolean boolean, vdate date, vdecimal decimal, vdouble double, vfloat float, vinet inet, vint int, vmap map<text, text>, vset<text>, vsmallint smallint, vtext text, vtime time, vtimestamp timestamp, vtimeuuid timeuuid, vtinyint tinyint, vuuid uuid, vvarchar text, vvarint varint);

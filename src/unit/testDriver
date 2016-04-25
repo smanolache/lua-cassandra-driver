@@ -1,0 +1,510 @@
+local a = {message = ""}
+
+local function cb(future, d)
+   print(d.message)
+end
+
+local function print_uuid(v)
+   for i=1,4 do
+      io.write(string.format("%02x", v:byte(i)))
+   end
+   io.write("-")
+   for i=5,6 do
+      io.write(string.format("%02x", v:byte(i)))
+   end
+   io.write("-")
+   for i=7,8 do
+      io.write(string.format("%02x", v:byte(i)))
+   end
+   io.write("-")
+   for i=9,10 do
+      io.write(string.format("%02x", v:byte(i)))
+   end
+   io.write("-")
+   for i=11,16 do
+      io.write(string.format("%02x", v:byte(i)))
+   end
+end
+
+local function print_set(col)
+   local it = col:iterator_from_collection()
+   io.write("{")
+   if it:next() then
+      local rc, val, v
+      val = it:get_value()
+      rc, v = val:get_string()
+      if 0 ~= rc then
+	 print("cass_iterator_get_value", rc)
+	 os.exit(1)
+      end
+      io.write(v)
+      while it:next() do
+	 local rc, val, v
+	 val = it:get_value()
+	 rc, v = val:get_string()
+	 if 0 ~= rc then
+	    print("cass_iterator_get_value", rc)
+	    os.exit(1)
+	 end
+	 io.write(", ", v)
+      end
+   end
+   io.write("}")
+end
+
+local function print_map(col)
+   local it = col:iterator_from_collection()
+   io.write("{")
+   if it:next() then
+      local rc, val, k
+      val = it:get_value()
+      rc, k = val:get_string()
+      if 0 ~= rc then
+	 print("cass_iterator_get_value", rc)
+	 os.exit(1)
+      end
+      it:next()
+      rc, v = val:get_string()
+      if 0 ~= rc then
+	 print("cass_iterator_get_value", rc)
+	 os.exit(1)
+      end
+      io.write(k, ":", v)
+      while it:next() do
+	 local rc, val, k
+	 val = it:get_value()
+	 rc, k = val:get_string()
+	 if 0 ~= rc then
+	    print("cass_iterator_get_value", rc)
+	    os.exit(1)
+	 end
+	 it:next()
+	 rc, v = val:get_string()
+	 if 0 ~= rc then
+	    print("cass_iterator_get_value", rc)
+	    os.exit(1)
+	 end
+	 io.write(", ", k, ":", v)
+      end
+   end
+   io.write("}")
+end
+
+local function print_row(row, cols)
+   for _, c in ipairs(cols) do
+      local col = row:get_column_by_name(c)
+      io.write(c, "\t")
+      if col:is_null() then
+	 io.write("null");
+      else
+	 if c == "k" or
+	    c == "vascii" or
+	    c == "vtext" or
+	    c == "vvarchar"
+	 then
+	    local v
+	    rc, v = col:get_string()
+	    if 0 ~= rc then
+	       print("cass_value_get_string", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vbigint" or c == "vtimestamp" or c == "vtime" then
+	    local v
+	    rc, v = col:get_int64()
+	    if 0 ~= rc then
+	       print("cass_value_get_int64", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vblob" or c == "vvarint" then
+	    local v
+	    rc, v = col:get_bytes()
+	    if 0 ~= rc then
+	       print("cass_value_get_bytes", rc, c)
+	       os.exit(1)
+	    end
+	    for i=1,v:len() do
+	       io.write(string.format("%02x", v:byte(i)))
+	    end
+	 elseif c == "vboolean" then
+	    local v
+	    rc, v = col:get_bool()
+	    if 0 ~= rc then
+	       print("cass_value_get_bool", rc, c)
+	       os.exit(1)
+	    end
+	    if v then io.write("true") else io.write("false") end
+	 elseif c == "vdate" then
+	    local v
+	    rc, v = col:get_uint32()
+	    if 0 ~= rc then
+	       print("cass_value_get_date", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vdecimal" then
+	    local v, scale
+	    rc, v, scale = col:get_decimal()
+	    if 0 ~= rc then
+	       print("cass_value_get_decimal", rc, c)
+	       os.exit(1)
+	    end
+	    for i=1,v:len() do
+	       io.write(string.format("%02x", v:byte(i)))
+	    end
+	    io.write("\t", scale)
+	 elseif c == "vdouble" then
+	    local v
+	    rc, v = col:get_double()
+	    if 0 ~= rc then
+	       print("cass_value_get_double", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vfloat" then
+	    local v
+	    rc, v = col:get_float()
+	    if 0 ~= rc then
+	       print("cass_value_get_float", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vinet" then
+	    local v
+	    rc, v = col:get_inet()
+	    if 0 ~= rc then
+	       print("cass_value_get_inet", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vint" then
+	    local v
+	    rc, v = col:get_int32()
+	    if 0 ~= rc then
+	       print("cass_value_get_int32", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vtinyint" then
+	    local v
+	    rc, v = col:get_int8()
+	    if 0 ~= rc then
+	       print("cass_value_get_int8", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vsmallint" then
+	    local v
+	    rc, v = col:get_int16()
+	    if 0 ~= rc then
+	       print("cass_value_get_int16", rc, c)
+	       os.exit(1)
+	    end
+	    io.write(v)
+	 elseif c == "vset" then
+	    print_set(col)
+	 elseif c == "vmap" then
+	    print_map(col)
+	 elseif c == "vuuid" or c == "vtimeuuid" then
+	    local v
+	    rc, v = col:get_uuid()
+	    if 0 ~= rc then
+	       print("cass_value_get_inet", rc, c)
+	       os.exit(1)
+	    end
+	    print_uuid(v)
+	 end
+      end
+      io.write("\n")
+   end
+end
+
+local function get_columns(result)
+   local n = result:column_count()
+   local cols = {}
+   for i=0,n-1 do
+      local c
+      rc, c = result:column_name(i)
+      if 0 ~= rc then
+	 print("cass_result_column_name", i)
+	 os.exit(1)
+      end
+      cols[i] = c
+   end
+   return cols
+end
+
+local function print_results(result)
+   local cols = get_columns(result)
+   local it = result:iterator()
+   while it:next() do
+      print_row(it:get_row(), cols)
+   end
+end
+
+local function print_stats(metrics)
+   if nil == metrics then
+      print("nil metrics")
+      return
+   end
+   local reqs = metrics["requests"]
+   print("min: ", reqs["min"])
+   print("max: ", reqs["max"])
+   print("mean: ", reqs["mean"])
+   print("stddev: ", reqs["stddev"])
+   print("median: ", reqs["median"])
+   print("percentile_75th: ", reqs["percentile_75th"])
+   print("percentile_95th: ", reqs["percentile_95th"])
+   print("percentile_98th: ", reqs["percentile_98th"])
+   print("percentile_99th: ", reqs["percentile_99th"])
+   print("percentile_999th: ", reqs["percentile_999th"])
+   print("mean_rate: ", reqs["mean_rate"])
+   print("one_minute_rate: ", reqs["one_minute_rate"])
+   print("five_minute_rate: ", reqs["five_minute_rate"])
+   print("fifteen_minute_rate: ", reqs["fifteen_minute_rate"])
+   
+   local stats = metrics["stats"]
+   print("total_connections: ", stats["total_connections"])
+   print("available_connections: ", stats["available_connections"])
+   print("exceeded_pending_requests_water_mark: ", stats["exceeded_pending_requests_water_mark"])
+   print("exceeded_write_bytes_water_mark: ", stats["exceeded_write_bytes_water_mark"])
+   
+   local errs = metrics["errors"]
+   print("connection_timeouts: ", errs["connection_timeouts"])
+   print("pending_request_timeouts: ", errs["pending_request_timeouts"])
+   print("request_timeouts: ", errs["request_timeouts"])
+end
+
+local log_d = {message = "log_cb"}
+local function log_cb(msg, d)
+   print(msg.time_ms, msg.severity, msg.file, msg.line, msg.cfunction, msg.message, d.message)
+end
+-------------------------------------------------------------
+
+local driver = require("db.cassandra")
+
+driver.cass_log_set_level(4)
+driver.cass_log_set_callback(log_cb, log_d)
+
+local cluster = driver.cass_cluster_new()
+
+cluster:set_port(9042)
+cluster:set_protocol_version(4)
+cluster:set_contact_points("127.0.0.1")
+
+local session = driver.cass_session_new()
+
+local future = session:connect_keyspace(cluster, "luatest")
+a.message = "session:connect_keyspace"
+local rc = future:set_callback(cb, a)
+if 0 ~= rc then
+   print(future:error_message())
+   os.exit(1)
+end
+
+future:wait()
+rc = future:error_code()
+if 0 ~= rc then
+   print(future:error_message())
+   os.exit(1)
+end
+
+-----------------------------------------------------------------
+
+future = session:prepare("update gp set vascii=?, vbigint=?, vblob=?, vboolean=?, vdate=?, vdecimal=?, vdouble=?, vfloat=?, vinet=?, vint=?, vmap=?, vset=?, vsmallint=?, vtext=?, vtime=?, vtimestamp=?, vtimeuuid=?, vtinyint=?, vuuid=?, vvarchar=?, vvarint=? where k=?")
+a.message = "session:prepare"
+future:set_callback(cb, a)
+
+future:wait()
+rc = future:error_code()
+if 0 ~= rc then
+   print(future:error_message())
+   os.exit(1)
+end
+
+local prepared = future:get_prepared()
+
+local stmt = prepared:bind()
+
+rc = stmt:bind_string_by_name("vascii", "vascii string")
+if 0 ~= rc then
+   print("vasii", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_int64_by_name("vbigint", 9223372036854775807)
+if 0 ~= rc then
+   print("vbigint", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_bytes_by_name("vblob", "\000\010\013\145\162", 5)
+if 0 ~= rc then
+   print("vblog", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_bool_by_name("vboolean", true)
+if 0 ~= rc then
+   print("vboolean", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_uint32_by_name("vdate", 2147500438) -- 2^31 = 1970-01-01
+if 0 ~= rc then
+   print("vdata", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_decimal_by_name("vdecimal", "\073\037\089\246\064", 11) -- 3.14159265359
+if 0 ~= rc then
+   print("vdecimal", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_double_by_name("vdouble", 3.14)
+if 0 ~= rc then
+   print("vdouble", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_float_by_name("vfloat", 2.71)
+if 0 ~= rc then
+   print("vfloat", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_inet_by_name("vinet", "127.0.0.1")
+if 0 ~= rc then
+   print("vinet", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_int32_by_name("vint", 2147483647)
+if 0 ~= rc then
+   print("vint", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+local mt = driver.cass_data_type_new(driver.TYPES.VALUE_TYPE_MAP)
+local map = mt:new_collection(3)
+map:append_string("key1")
+map:append_string("val1")
+map:append_string("key2")
+map:append_string("val2")
+map:append_string("key3")
+map:append_string("val3")
+rc = stmt:bind_collection_by_name("vmap", map)
+if 0 ~= rc then
+   print("new_collection (map)", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+local st = driver.cass_data_type_new(driver.TYPES.VALUE_TYPE_SET)
+local set = st:new_collection(2)
+set:append_string("elem1")
+set:append_string("elem2")
+rc = stmt:bind_collection_by_name("vset", set)
+if 0 ~= rc then
+   print("new_collection (set)", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_int16_by_name("vsmallint", 32767)
+if 0 ~= rc then
+   print("vsmallint", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_string_by_name("vtext", "text text")
+if 0 ~= rc then
+   print("vtext", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_int64_by_name("vtime", 86399999999999) --nanoseconds since midnight
+if 0 ~= rc then
+   print("vtime", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_int64_by_name("vtimestamp", 1461506397000)
+if 0 ~= rc then
+   print("vtimestamp", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_uuid_by_name("vtimeuuid", "1b14b28c-0a27-11e6-9de0-5404a637d482")
+if 0 ~= rc then
+   print("vtimeuuid", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_int8_by_name("vtinyint", 127)
+if 0 ~= rc then
+   print("vtinyint", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_uuid_by_name("vuuid", "37c5dbb8-0a27-11e6-9b3f-5404a637d482")
+if 0 ~= rc then
+   print("vuuid", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_string_by_name("vvarchar", "varchar text")
+if 0 ~= rc then
+   print("vvarchar", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_bytes_by_name("vvarint", "\001\021\142\070\009\019\208\000\000") -- > 2^64
+if 0 ~= rc then
+   print("vvarint", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+rc = stmt:bind_string_by_name("k", "key00")
+if 0 ~= rc then
+   print("k", driver.cass_error_desc(rc))
+   os.exit(1)
+end
+
+rc = stmt:set_consistency(driver.CL.ONE)
+if 0 ~= rc then
+   print(driver.cass_error_desc(rc))
+   os.exit(1)
+end
+
+future = session:execute(stmt)
+future:wait()
+local rc = future:error_code()
+if 0 ~= rc then
+   print(future:error_message())
+   os.exit(1)
+end
+
+local result = future:get_result()
+
+collectgarbage()
+
+----------------------------------------------------------------------
+
+future = session:prepare("select * from gp where k=?")
+future:wait()
+rc = future:error_code()
+if 0 ~= rc then
+   print(future:error_message())
+   os.exit(1)
+end
+
+prepared = future:get_prepared()
+
+stmt = prepared:bind()
+
+rc = stmt:bind_string(0, "key00")
+if 0 ~= rc then
+   print(driver.cass_error_desc(rc))
+   os.exit(1)
+end
+
+rc = stmt:set_consistency(1)
+if 0 ~= rc then
+   print(driver.cass_error_desc(rc))
+   os.exit(1)
+end
+
+future = session:execute(stmt)
+future:wait()
+rc = future:error_code()
+if 0 ~= rc then
+   print(future:error_message())
+   os.exit(1)
+end
+
+result = future:get_result()
+
+print_results(result)
+
+print_stats(session:get_metrics())
+
