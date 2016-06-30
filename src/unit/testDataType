@@ -1,0 +1,7 @@
+local db = require("db.cassandra")
+
+local dt = db.cass_data_type_new(db.TYPES.VALUE_TYPE_TEXT)
+
+local x = dt:type()
+
+print(x)
