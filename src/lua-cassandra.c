@@ -60,6 +60,19 @@ new_cass_data_type(lua_State *s, const CassDataType *data_type) {
 }
 
 static int
+new_cass_data_type_ref(lua_State *s, const CassDataType *data_type) {
+	if (NULL != data_type) {
+		const CassDataType **impl = (const CassDataType **)
+			lua_newuserdata(s, sizeof(const CassDataType *));
+		luaL_getmetatable(s, "datastax.cass_data_type_ref");
+		lua_setmetatable(s, -2);
+		*impl = data_type;
+	} else
+		lua_pushnil(s);
+	return 1;
+}
+
+static int
 new_cass_error_result(lua_State *s, const CassErrorResult *err) {
 	if (NULL != err) {
 		const CassErrorResult **impl = (const CassErrorResult **)
@@ -468,7 +481,23 @@ check_cass_custom_payload(lua_State *s, int index) {
 
 static CassDataType **
 check_cass_data_type(lua_State *s, int index) {
-	void *ud = luaL_checkudata(s, index, "datastax.cass_data_type");
+	int eq;
+	void *ud;
+
+	if (0 == lua_getmetatable(s, index))
+		luaL_argcheck(s, 0, 1, "'cass_data_type' expected");
+
+	luaL_getmetatable(s, "datastax.cass_data_type");
+	eq = lua_equal(s, -1, -2);
+	if (!eq) {
+		lua_pop(s, 1);
+		luaL_getmetatable(s, "datastax.cass_data_type_ref");
+		eq = lua_equal(s, -1, -2);
+		lua_pop(s, 2);
+		luaL_argcheck(s, eq, 1, "'cass_data_type' expected");
+	} else
+		lua_pop(s, 2);
+	ud = lua_touserdata(s, index);
 	luaL_argcheck(s, NULL != ud, 1, "'cass_data_type' expected");
 	return (CassDataType **)ud;
 }
@@ -2499,7 +2528,7 @@ lc_cass_prepared_parameter_data_type(lua_State *s) {
 	const CassPrepared *prepared = *check_cass_prepared(s, 1);
 	size_t index = (size_t)luaL_checkinteger(s, 2);
 	const CassDataType *type = cass_prepared_parameter_data_type(prepared, index);
-	return new_cass_data_type(s, type);
+	return new_cass_data_type_ref(s, type);
 }
 
 static int
@@ -2508,7 +2537,7 @@ lc_cass_prepared_parameter_data_type_by_name(lua_State *s) {
 	size_t len;
 	const char *name = luaL_checklstring(s, 2, &len);
 	const CassDataType *type = cass_prepared_parameter_data_type_by_name(prepared, name);
-	return new_cass_data_type(s, type);
+	return new_cass_data_type_ref(s, type);
 }
 
 static int
@@ -2708,7 +2737,7 @@ lc_cass_data_type_sub_data_type(lua_State *s) {
 	const CassDataType *type = *check_cass_data_type(s, 1);
 	size_t index = (size_t)luaL_checkinteger(s, 2);
 	const CassDataType *data = cass_data_type_sub_data_type(type, index);
-	return new_cass_data_type(s, data);
+	return new_cass_data_type_ref(s, data);
 }
 
 static int
@@ -2717,7 +2746,7 @@ lc_cass_data_type_sub_data_type_by_name(lua_State *s) {
 	size_t len;
 	const char *name = luaL_checklstring(s, 2, &len);
 	const CassDataType *data = cass_data_type_sub_data_type_by_name(type, name);
-	return new_cass_data_type(s, data);
+	return new_cass_data_type_ref(s, data);
 }
 
 static int
@@ -2800,7 +2829,7 @@ static int
 lc_cass_collection_data_type(lua_State *s) {
 	const CassCollection *c = *check_cass_collection(s, 1);
 	const CassDataType *type = cass_collection_data_type(c);
-	return new_cass_data_type(s, type);
+	return new_cass_data_type_ref(s, type);
 }
 
 static int
@@ -2978,7 +3007,7 @@ static int
 lc_cass_tuple_data_type(lua_State *s) {
 	const CassTuple *tuple = *check_cass_tuple(s, 1);
 	const CassDataType *type = cass_tuple_data_type(tuple);
-	return new_cass_data_type(s, type);
+	return new_cass_data_type_ref(s, type);
 }
 
 static int
@@ -3174,7 +3203,7 @@ static int
 lc_cass_user_type_data_type(lua_State *s) {
 	const CassUserType *ut = *check_cass_user_type(s, 1);
 	const CassDataType *dt = cass_user_type_data_type(ut);
-	return new_cass_data_type(s, dt);
+	return new_cass_data_type_ref(s, dt);
 }
 
 static int
@@ -4053,7 +4082,7 @@ static int
 lc_cass_value_data_type(lua_State *s) {
 	const CassValue *val = *check_cass_value(s, 1);
 	const CassDataType *type = cass_value_data_type(val);
-	return new_cass_data_type(s, type);
+	return new_cass_data_type_ref(s, type);
 }
 
 static int
@@ -5803,7 +5832,7 @@ set_type_constants(lua_State *s) {
 
 int
 luaopen_db_cassandra(lua_State *s) {
-	lua_checkstack(s, 100);
+	lua_checkstack(s, 200);
 
 	luaL_newmetatable(s, "datastax.cass_batch");
  	lua_pushstring(s, "__gc");
@@ -5845,6 +5874,12 @@ luaopen_db_cassandra(lua_State *s) {
  	lua_pushstring(s, "__gc");
 	lua_pushcfunction(s, lc_cass_data_type_free);
 	lua_settable(s, -3);
+	lua_pushstring(s, "__index");
+	lua_pushvalue(s, -2);
+	lua_settable(s, -3);
+	luaL_openlib(s, NULL, data_type_methods, 0);
+
+	luaL_newmetatable(s, "datastax.cass_data_type_ref");
 	lua_pushstring(s, "__index");
 	lua_pushvalue(s, -2);
 	lua_settable(s, -3);
