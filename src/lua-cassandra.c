@@ -1992,8 +1992,7 @@ lc_cass_statement_set_paging_state_token(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
 	size_t len;
 	const char *paging_state = luaL_checklstring(s, 2, &len);
-	size_t n = (size_t)luaL_checkinteger(s, 3);
-	CassError e = cass_statement_set_paging_state_token(stmt, paging_state, n);
+	CassError e = cass_statement_set_paging_state_token(stmt, paging_state, len);
 	lua_pushinteger(s, e);
 	return 1;
 }
