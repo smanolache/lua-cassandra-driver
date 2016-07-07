@@ -12,6 +12,9 @@
 #include <byteswap.h>
 #endif
 
+#define VERSION_NORM(a, b, c) 10000 * (a) + 100 * (b) + (c)
+#define CASS_DRV_V VERSION_NORM(CASS_VERSION_MAJOR, CASS_VERSION_MINOR, CASS_VERSION_PATH)
+
 static pthread_mutex_t cb_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t log_mtx = PTHREAD_MUTEX_INITIALIZER;
 
@@ -257,6 +260,7 @@ new_cass_retry_policy(lua_State *s, const CassRetryPolicy *pol) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 new_cass_schema_meta(lua_State *s, const CassSchemaMeta *meta) {
 	if (NULL != meta) {
@@ -269,6 +273,7 @@ new_cass_schema_meta(lua_State *s, const CassSchemaMeta *meta) {
 		lua_pushnil(s);
 	return 1;
 }
+#endif
 
 static int
 new_cass_statement(lua_State *s, CassStatement *impl) {
@@ -334,6 +339,7 @@ new_cass_uuid_gen(lua_State *s, const CassUuidGen *ug) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 new_cass_aggregate_meta(lua_State *s, const CassAggregateMeta *v) {
 	if (NULL != v) {
@@ -374,11 +380,11 @@ new_cass_function_meta(lua_State *s, const CassFunctionMeta *v) {
 }
 
 static int
-new_cass_index_meta(lua_State *s, const CassIndexMeta *v) {
+new_cass_keyspace_meta(lua_State *s, const CassKeyspaceMeta *v) {
 	if (NULL != v) {
-		const CassIndexMeta **impl = (const CassIndexMeta **)
-			lua_newuserdata(s, sizeof(const CassIndexMeta *));
-		luaL_getmetatable(s, "datastax.cass_index_meta");
+		const CassKeyspaceMeta **impl = (const CassKeyspaceMeta **)
+			lua_newuserdata(s, sizeof(const CassKeyspaceMeta *));
+		luaL_getmetatable(s, "datastax.cass_keyspace_meta");
 		lua_setmetatable(s, -2);
 		*impl = v;
 	} else
@@ -387,11 +393,26 @@ new_cass_index_meta(lua_State *s, const CassIndexMeta *v) {
 }
 
 static int
-new_cass_keyspace_meta(lua_State *s, const CassKeyspaceMeta *v) {
+new_cass_table_meta(lua_State *s, const CassTableMeta *v) {
 	if (NULL != v) {
-		const CassKeyspaceMeta **impl = (const CassKeyspaceMeta **)
-			lua_newuserdata(s, sizeof(const CassKeyspaceMeta *));
-		luaL_getmetatable(s, "datastax.cass_keyspace_meta");
+		const CassTableMeta **impl = (const CassTableMeta **)
+			lua_newuserdata(s, sizeof(const CassTableMeta *));
+		luaL_getmetatable(s, "datastax.cass_table_meta");
+		lua_setmetatable(s, -2);
+		*impl = v;
+	} else
+		lua_pushnil(s);
+	return 1;
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+static int
+new_cass_index_meta(lua_State *s, const CassIndexMeta *v) {
+	if (NULL != v) {
+		const CassIndexMeta **impl = (const CassIndexMeta **)
+			lua_newuserdata(s, sizeof(const CassIndexMeta *));
+		luaL_getmetatable(s, "datastax.cass_index_meta");
 		lua_setmetatable(s, -2);
 		*impl = v;
 	} else
@@ -411,6 +432,7 @@ new_cass_materialized_view_meta(lua_State *s, const CassMaterializedViewMeta *v)
 		lua_pushnil(s);
 	return 1;
 }
+#endif
 
 static int
 new_cass_row(lua_State *s, const CassRow *v) {
@@ -418,19 +440,6 @@ new_cass_row(lua_State *s, const CassRow *v) {
 		const CassRow **impl = (const CassRow **)
 			lua_newuserdata(s, sizeof(const CassRow *));
 		luaL_getmetatable(s, "datastax.cass_row");
-		lua_setmetatable(s, -2);
-		*impl = v;
-	} else
-		lua_pushnil(s);
-	return 1;
-}
-
-static int
-new_cass_table_meta(lua_State *s, const CassTableMeta *v) {
-	if (NULL != v) {
-		const CassTableMeta **impl = (const CassTableMeta **)
-			lua_newuserdata(s, sizeof(const CassTableMeta *));
-		luaL_getmetatable(s, "datastax.cass_table_meta");
 		lua_setmetatable(s, -2);
 		*impl = v;
 	} else
@@ -472,12 +481,14 @@ check_cass_collection(lua_State *s, int index) {
 	return (CassCollection **)ud;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static CassCustomPayload **
 check_cass_custom_payload(lua_State *s, int index) {
 	void *ud = luaL_checkudata(s, index, "datastax.cass_custom_payload");
 	luaL_argcheck(s, NULL != ud, 1, "'cass_custom_payload' expected");
 	return (CassCustomPayload **)ud;
 }
+#endif
 
 static CassDataType **
 check_cass_data_type(lua_State *s, int index) {
@@ -544,12 +555,14 @@ check_cass_retry_policy(lua_State *s, int index) {
 	return (CassRetryPolicy **)ud;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static CassSchemaMeta **
 check_cass_schema_meta(lua_State *s, int index) {
 	void *ud = luaL_checkudata(s, index, "datastax.cass_schema_meta");
 	luaL_argcheck(s, NULL != ud, 1, "'cass_schema_meta' expected");
 	return (CassSchemaMeta **)ud;
 }
+#endif
 
 static CassSession **
 check_cass_session(lua_State *s, int index) {
@@ -600,6 +613,7 @@ check_cass_uuid_gen(lua_State *s, int index) {
 	return (CassUuidGen **)ud;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static CassAggregateMeta **
 check_cass_aggregate_meta(lua_State *s, int index) {
 	void *ud = luaL_checkudata(s, index, "datastax.cass_aggregate_meta");
@@ -621,18 +635,27 @@ check_cass_function_meta(lua_State *s, int index) {
 	return (CassFunctionMeta **)ud;
 }
 
-static CassIndexMeta **
-check_cass_index_meta(lua_State *s, int index) {
-	void *ud = luaL_checkudata(s, index, "datastax.cass_index_meta");
-	luaL_argcheck(s, NULL != ud, 1, "'cass_index_meta' expected");
-	return (CassIndexMeta **)ud;
-}
-
 static CassKeyspaceMeta **
 check_cass_keyspace_meta(lua_State *s, int index) {
 	void *ud = luaL_checkudata(s, index, "datastax.cass_keyspace_meta");
 	luaL_argcheck(s, NULL != ud, 1, "'cass_keyspace_meta' expected");
 	return (CassKeyspaceMeta **)ud;
+}
+
+static CassTableMeta **
+check_cass_table_meta(lua_State *s, int index) {
+	void *ud = luaL_checkudata(s, index, "datastax.cass_table_meta");
+	luaL_argcheck(s, NULL != ud, 1, "'cass_table_meta' expected");
+	return (CassTableMeta **)ud;
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+static CassIndexMeta **
+check_cass_index_meta(lua_State *s, int index) {
+	void *ud = luaL_checkudata(s, index, "datastax.cass_index_meta");
+	luaL_argcheck(s, NULL != ud, 1, "'cass_index_meta' expected");
+	return (CassIndexMeta **)ud;
 }
 
 static CassMaterializedViewMeta **
@@ -641,19 +664,13 @@ check_cass_materialized_view_meta(lua_State *s, int index) {
 	luaL_argcheck(s, NULL != ud, 1, "'cass_materialized_view_meta' expected");
 	return (CassMaterializedViewMeta **)ud;
 }
+#endif
 
 static CassRow **
 check_cass_row(lua_State *s, int index) {
 	void *ud = luaL_checkudata(s, index, "datastax.cass_row");
 	luaL_argcheck(s, NULL != ud, 1, "'cass_row' expected");
 	return (CassRow **)ud;
-}
-
-static CassTableMeta **
-check_cass_table_meta(lua_State *s, int index) {
-	void *ud = luaL_checkudata(s, index, "datastax.cass_table_meta");
-	luaL_argcheck(s, NULL != ud, 1, "'cass_table_meta' expected");
-	return (CassTableMeta **)ud;
 }
 
 static CassValue **
@@ -925,6 +942,7 @@ lc_cass_cluster_set_latency_aware_routing_settings(lua_State *s) {
 	return 0;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_cluster_set_whitelist_filtering(lua_State *s) {
 	CassCluster *cluster = *check_cass_cluster(s, 1);
@@ -933,7 +951,9 @@ lc_cass_cluster_set_whitelist_filtering(lua_State *s) {
 	cass_cluster_set_whitelist_filtering(cluster, hosts);
 	return 0;
 }
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 static int
 lc_cass_cluster_set_blacklist_filtering(lua_State *s) {
 	CassCluster *cluster = *check_cass_cluster(s, 1);
@@ -960,6 +980,7 @@ lc_cass_cluster_set_blacklist_dc_filtering(lua_State *s) {
 	cass_cluster_set_blacklist_dc_filtering(cluster, hosts);
 	return 0;
 }
+#endif
 
 static int
 lc_cass_cluster_set_tcp_nodelay(lua_State *s) {
@@ -1092,21 +1113,29 @@ lc_cass_session_execute_batch(lua_State *s) {
 	return new_cass_future(s, future);
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_session_get_schema_meta(lua_State *s) {
 	const CassSession *session = *check_cass_session(s, 1);
 	const CassSchemaMeta *meta = cass_session_get_schema_meta(session);
 	return new_cass_schema_meta(s, meta);
 }
+#endif
 
 static int
 lc_cass_session_get_metrics(lua_State *s) {
-	const CassSession *session = *check_cass_session(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassSession *
+#else
+	CassSession *
+#endif
+	session = *check_cass_session(s, 1);
 	CassMetrics output;
 	cass_session_get_metrics(session, &output);
 	return new_cass_metrics(s, &output);
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_schema_meta_free(lua_State *s) {
 	CassSchemaMeta **schema_meta = check_cass_schema_meta(s, 1);
@@ -1124,6 +1153,17 @@ lc_cass_schema_meta_snapshot_version(lua_State *s) {
 }
 
 static int
+lc_cass_schema_meta_keyspace_by_name(lua_State *s) {
+	const CassSchemaMeta *schema_meta = *check_cass_schema_meta(s, 1);
+	size_t len;
+	const char *keyspace = luaL_checklstring(s, 2, &len);
+	const CassKeyspaceMeta *meta = cass_schema_meta_keyspace_by_name(schema_meta, keyspace);
+	return new_cass_keyspace_meta(s, meta);
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+static int
 lc_cass_schema_meta_version(lua_State *s) {
 	const CassSchemaMeta *schema_meta = *check_cass_schema_meta(s, 1);
 	CassVersion version = cass_schema_meta_version(schema_meta);
@@ -1132,16 +1172,9 @@ lc_cass_schema_meta_version(lua_State *s) {
 	lua_pushinteger(s, version.patch_version);
 	return 3;
 }
+#endif
 
-static int
-lc_cass_schema_meta_keyspace_by_name(lua_State *s) {
-	const CassSchemaMeta *schema_meta = *check_cass_schema_meta(s, 1);
-	size_t len;
-	const char *keyspace = luaL_checklstring(s, 2, &len);
-	const CassKeyspaceMeta *meta = cass_schema_meta_keyspace_by_name(schema_meta, keyspace);
-	return new_cass_keyspace_meta(s, meta);
-}
-
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_keyspace_meta_name(lua_State *s) {
 	const CassKeyspaceMeta *keyspace_meta = *check_cass_keyspace_meta(s, 1);
@@ -1159,15 +1192,6 @@ lc_cass_keyspace_meta_table_by_name(lua_State *s) {
 	const char *table = luaL_checklstring(s, 2, &len);
 	const CassTableMeta *meta = cass_keyspace_meta_table_by_name(keyspace_meta, table);
 	return new_cass_table_meta(s, meta);
-}
-
-static int
-lc_cass_keyspace_meta_materialized_view_by_name(lua_State *s) {
-	const CassKeyspaceMeta *keyspace_meta = *check_cass_keyspace_meta(s, 1);
-	size_t len;
-	const char *view = luaL_checklstring(s, 2, &len);
-	const CassMaterializedViewMeta *materialised_view = cass_keyspace_meta_materialized_view_by_name(keyspace_meta, view);
-	return new_cass_materialized_view_meta(s, materialised_view);
 }
 
 static int
@@ -1208,7 +1232,20 @@ lc_cass_keyspace_meta_field_by_name(lua_State *s) {
 	const CassValue *value = cass_keyspace_meta_field_by_name(keyspace_meta, name);
 	return new_cass_value(s, value);
 }
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+static int
+lc_cass_keyspace_meta_materialized_view_by_name(lua_State *s) {
+	const CassKeyspaceMeta *keyspace_meta = *check_cass_keyspace_meta(s, 1);
+	size_t len;
+	const char *view = luaL_checklstring(s, 2, &len);
+	const CassMaterializedViewMeta *materialised_view = cass_keyspace_meta_materialized_view_by_name(keyspace_meta, view);
+	return new_cass_materialized_view_meta(s, materialised_view);
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_table_meta_name(lua_State *s) {
 	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
@@ -1244,6 +1281,49 @@ lc_cass_table_meta_column(lua_State *s) {
 	return new_cass_column_meta(s, column_meta);
 }
 
+static int
+lc_cass_table_meta_partition_key_count(lua_State *s) {
+	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
+	size_t n = cass_table_meta_partition_key_count(table_meta);
+	lua_pushinteger(s, n);
+	return 1;
+}
+
+static int
+lc_cass_table_meta_partition_key(lua_State *s) {
+	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
+	size_t index = luaL_checkinteger(s, 2);
+	const CassColumnMeta *meta = cass_table_meta_partition_key(table_meta, index);
+	return new_cass_column_meta(s, meta);
+}
+
+static int
+lc_cass_table_meta_clustering_key_count(lua_State *s) {
+	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
+	size_t n = cass_table_meta_clustering_key_count(table_meta);
+	lua_pushinteger(s, n);
+	return 1;
+}
+
+static int
+lc_cass_table_meta_clustering_key(lua_State *s) {
+	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
+	size_t index = luaL_checkinteger(s, 2);
+	const CassColumnMeta *meta = cass_table_meta_clustering_key(table_meta, index);
+	return new_cass_column_meta(s, meta);
+}
+
+static int
+lc_cass_table_meta_field_by_name(lua_State *s) {
+	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
+	size_t len;
+	const char *name = luaL_checklstring(s, 2, &len);
+	const CassValue *value = cass_table_meta_field_by_name(table_meta, name);
+	return new_cass_value(s, value);
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 static int
 lc_cass_table_meta_index_by_name(lua_State *s) {
 	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
@@ -1295,53 +1375,12 @@ lc_cass_table_meta_meterialized_view(lua_State *s) {
 }
 
 static int
-lc_cass_table_meta_partition_key_count(lua_State *s) {
-	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
-	size_t n = cass_table_meta_partition_key_count(table_meta);
-	lua_pushinteger(s, n);
-	return 1;
-}
-
-static int
-lc_cass_table_meta_partition_key(lua_State *s) {
-	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
-	size_t index = luaL_checkinteger(s, 2);
-	const CassColumnMeta *meta = cass_table_meta_partition_key(table_meta, index);
-	return new_cass_column_meta(s, meta);
-}
-
-static int
-lc_cass_table_meta_clustering_key_count(lua_State *s) {
-	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
-	size_t n = cass_table_meta_clustering_key_count(table_meta);
-	lua_pushinteger(s, n);
-	return 1;
-}
-
-static int
-lc_cass_table_meta_clustering_key(lua_State *s) {
-	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
-	size_t index = luaL_checkinteger(s, 2);
-	const CassColumnMeta *meta = cass_table_meta_clustering_key(table_meta, index);
-	return new_cass_column_meta(s, meta);
-}
-
-static int
 lc_cass_table_meta_clustering_key_order(lua_State *s) {
 	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
 	size_t index = luaL_checkinteger(s, 2);
 	CassClusteringOrder order = cass_table_meta_clustering_key_order(table_meta, index);
 	lua_pushinteger(s, order);
 	return 1;
-}
-
-static int
-lc_cass_table_meta_field_by_name(lua_State *s) {
-	const CassTableMeta *table_meta = *check_cass_table_meta(s, 1);
-	size_t len;
-	const char *name = luaL_checklstring(s, 2, &len);
-	const CassValue *value = cass_table_meta_field_by_name(table_meta, name);
-	return new_cass_value(s, value);
 }
 
 static int
@@ -1436,7 +1475,9 @@ lc_cass_materialized_view_meta_field_by_name(lua_State *s) {
 	const CassValue *value = cass_materialized_view_meta_field_by_name(view_meta, name);
 	return new_cass_value(s, value);
 }
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_column_meta_name(lua_State *s) {
 	const CassColumnMeta *col_meta = *check_cass_column_meta(s, 1);
@@ -1470,7 +1511,9 @@ lc_cass_column_meta_field_by_name(lua_State *s) {
 	const CassValue *value = cass_column_meta_field_by_name(col_meta, name);
 	return new_cass_value(s, value);
 }
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 static int
 lc_cass_index_meta_name(lua_State *s) {
 	const CassIndexMeta *index_meta = *check_cass_index_meta(s, 1);
@@ -1514,7 +1557,9 @@ lc_cass_index_meta_field_by_name(lua_State *s) {
 	const CassValue *value = cass_index_meta_field_by_name(index_meta, name);
 	return new_cass_value(s, value);
 }
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_function_meta_name(lua_State *s) {
 	const CassFunctionMeta *func_meta = *check_cass_function_meta(s, 1);
@@ -1688,6 +1733,7 @@ lc_cass_aggregate_meta_field_by_name(lua_State *s) {
 	const CassValue *value = cass_aggregate_meta_field_by_name(agg_meta, name);
 	return new_cass_value(s, value);
 }
+#endif
 
 static int
 lc_cass_ssl_new(lua_State *s) {
@@ -1893,6 +1939,7 @@ lc_cass_future_error_message(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_future_custom_payload_item_count(lua_State *s) {
 	CassFuture *future = check_cass_future(s, 1)->future;
@@ -1914,6 +1961,7 @@ lc_cass_future_custom_payload_item(lua_State *s) {
 	lua_pushlstring(s, (const char *)value, sz);
 	return 3;
 }
+#endif
 
 static int
 lc_cass_statement_new(lua_State *s) {
@@ -2015,6 +2063,7 @@ lc_cass_statement_set_retry_policy(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_statement_set_custom_payload(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
@@ -2023,6 +2072,7 @@ lc_cass_statement_set_custom_payload(lua_State *s) {
 	lua_pushinteger(s, e);
 	return 1;
 }
+#endif
 
 static int
 lc_cass_statement_bind_null(lua_State *s) {
@@ -2043,6 +2093,7 @@ lc_cass_statement_bind_null_by_name(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_statement_bind_int8(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
@@ -2086,27 +2137,6 @@ lc_cass_statement_bind_int16_by_name(lua_State *s) {
 }
 
 static int
-lc_cass_statement_bind_int32(lua_State *s) {
-	CassStatement *stmt = *check_cass_statement(s, 1);
-	size_t index = (size_t)luaL_checkinteger(s, 2);
-	cass_int32_t v = (cass_int32_t)luaL_checkinteger(s, 3);
-	CassError e = cass_statement_bind_int32(stmt, index, v);
-	lua_pushinteger(s, e);
-	return 1;
-}
-
-static int
-lc_cass_statement_bind_int32_by_name(lua_State *s) {
-	CassStatement *stmt = *check_cass_statement(s, 1);
-	size_t len;
-	const char *name = luaL_checklstring(s, 2, &len);
-	cass_int32_t v = (cass_int32_t)luaL_checkinteger(s, 3);
-	CassError e = cass_statement_bind_int32_by_name(stmt, name, v);
-	lua_pushinteger(s, e);
-	return 1;
-}
-
-static int
 lc_cass_statement_bind_uint32(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
 	size_t index = (size_t)luaL_checkinteger(s, 2);
@@ -2123,6 +2153,28 @@ lc_cass_statement_bind_uint32_by_name(lua_State *s) {
 	const char *name = luaL_checklstring(s, 2, &len);
 	cass_uint32_t v = (cass_uint32_t)luaL_checkinteger(s, 3);
 	CassError e = cass_statement_bind_uint32_by_name(stmt, name, v);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
+static int
+lc_cass_statement_bind_int32(lua_State *s) {
+	CassStatement *stmt = *check_cass_statement(s, 1);
+	size_t index = (size_t)luaL_checkinteger(s, 2);
+	cass_int32_t v = (cass_int32_t)luaL_checkinteger(s, 3);
+	CassError e = cass_statement_bind_int32(stmt, index, v);
+	lua_pushinteger(s, e);
+	return 1;
+}
+
+static int
+lc_cass_statement_bind_int32_by_name(lua_State *s) {
+	CassStatement *stmt = *check_cass_statement(s, 1);
+	size_t len;
+	const char *name = luaL_checklstring(s, 2, &len);
+	cass_int32_t v = (cass_int32_t)luaL_checkinteger(s, 3);
+	CassError e = cass_statement_bind_int32_by_name(stmt, name, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -2590,6 +2642,7 @@ lc_cass_batch_set_retry_policy(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_batch_set_custom_payload(lua_State *s) {
 	CassBatch *batch = *check_cass_batch(s, 1);
@@ -2598,6 +2651,7 @@ lc_cass_batch_set_custom_payload(lua_State *s) {
 	lua_pushinteger(s, e);
 	return 1;
 }
+#endif
 
 static int
 lc_cass_batch_add_statement(lua_State *s) {
@@ -2715,6 +2769,7 @@ lc_cass_data_type_set_class_name(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 static int
 lc_cass_data_type_sub_type_count(lua_State *s) {
 	const CassDataType *type = *check_cass_data_type(s, 1);
@@ -2722,6 +2777,7 @@ lc_cass_data_type_sub_type_count(lua_State *s) {
 	lua_pushinteger(s, n);
 	return 1;
 }
+#endif
 
 /* static int */
 /* lc_cass_data_sub_type_count(lua_State *s) { */
@@ -2831,6 +2887,7 @@ lc_cass_collection_data_type(lua_State *s) {
 	return new_cass_data_type_ref(s, type);
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_collection_append_int8(lua_State *s) {
 	CassCollection *c = *check_cass_collection(s, 1);
@@ -2850,19 +2907,20 @@ lc_cass_collection_append_int16(lua_State *s) {
 }
 
 static int
-lc_cass_collection_append_int32(lua_State *s) {
-	CassCollection *c = *check_cass_collection(s, 1);
-	cass_int32_t v = luaL_checkinteger(s, 2);
-	CassError e = cass_collection_append_int32(c, v);
-	lua_pushinteger(s, e);
-	return 1;
-}
-
-static int
 lc_cass_collection_append_uint32(lua_State *s) {
 	CassCollection *c = *check_cass_collection(s, 1);
 	cass_uint32_t v = luaL_checkinteger(s, 2);
 	CassError e = cass_collection_append_uint32(c, v);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
+static int
+lc_cass_collection_append_int32(lua_State *s) {
+	CassCollection *c = *check_cass_collection(s, 1);
+	cass_int32_t v = luaL_checkinteger(s, 2);
+	CassError e = cass_collection_append_int32(c, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -3018,6 +3076,7 @@ lc_cass_tuple_set_null(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_tuple_set_int8(lua_State *s) {
 	CassTuple *tuple = *check_cass_tuple(s, 1);
@@ -3039,21 +3098,22 @@ lc_cass_tuple_set_int16(lua_State *s) {
 }
 
 static int
-lc_cass_tuple_set_int32(lua_State *s) {
-	CassTuple *tuple = *check_cass_tuple(s, 1);
-	size_t index = luaL_checkinteger(s, 2);
-	cass_int32_t v = luaL_checkinteger(s, 3);
-	CassError e = cass_tuple_set_int32(tuple, index, v);
-	lua_pushinteger(s, e);
-	return 1;
-}
-
-static int
 lc_cass_tuple_set_uint32(lua_State *s) {
 	CassTuple *tuple = *check_cass_tuple(s, 1);
 	size_t index = luaL_checkinteger(s, 2);
 	cass_uint32_t v = luaL_checkinteger(s, 3);
 	CassError e = cass_tuple_set_uint32(tuple, index, v);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
+static int
+lc_cass_tuple_set_int32(lua_State *s) {
+	CassTuple *tuple = *check_cass_tuple(s, 1);
+	size_t index = luaL_checkinteger(s, 2);
+	cass_int32_t v = luaL_checkinteger(s, 3);
+	CassError e = cass_tuple_set_int32(tuple, index, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -3224,6 +3284,7 @@ lc_cass_user_type_set_null_by_name(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_user_type_set_int8(lua_State *s) {
 	CassUserType *ut = *check_cass_user_type(s, 1);
@@ -3267,27 +3328,6 @@ lc_cass_user_type_set_int16_by_name(lua_State *s) {
 }
 
 static int
-lc_cass_user_type_set_int32(lua_State *s) {
-	CassUserType *ut = *check_cass_user_type(s, 1);
-	size_t index = luaL_checkinteger(s, 2);
-	cass_int32_t v = luaL_checkinteger(s, 3);
-	CassError e = cass_user_type_set_int32(ut, index, v);
-	lua_pushinteger(s, e);
-	return 1;
-}
-
-static int
-lc_cass_user_type_set_int32_by_name(lua_State *s) {
-	CassUserType *ut = *check_cass_user_type(s, 1);
-	size_t len;
-	const char *index = luaL_checklstring(s, 2, &len);
-	cass_int32_t v = luaL_checkinteger(s, 3);
-	CassError e = cass_user_type_set_int32_by_name(ut, index, v);
-	lua_pushinteger(s, e);
-	return 1;
-}
-
-static int
 lc_cass_user_type_set_uint32(lua_State *s) {
 	CassUserType *ut = *check_cass_user_type(s, 1);
 	size_t index = luaL_checkinteger(s, 2);
@@ -3304,6 +3344,28 @@ lc_cass_user_type_set_uint32_by_name(lua_State *s) {
 	const char *index = luaL_checklstring(s, 2, &len);
 	cass_uint32_t v = luaL_checkinteger(s, 3);
 	CassError e = cass_user_type_set_uint32_by_name(ut, index, v);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
+static int
+lc_cass_user_type_set_int32(lua_State *s) {
+	CassUserType *ut = *check_cass_user_type(s, 1);
+	size_t index = luaL_checkinteger(s, 2);
+	cass_int32_t v = luaL_checkinteger(s, 3);
+	CassError e = cass_user_type_set_int32(ut, index, v);
+	lua_pushinteger(s, e);
+	return 1;
+}
+
+static int
+lc_cass_user_type_set_int32_by_name(lua_State *s) {
+	CassUserType *ut = *check_cass_user_type(s, 1);
+	size_t len;
+	const char *index = luaL_checklstring(s, 2, &len);
+	cass_int32_t v = luaL_checkinteger(s, 3);
+	CassError e = cass_user_type_set_int32_by_name(ut, index, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -3691,14 +3753,6 @@ lc_cass_error_result_consistency(lua_State *s) {
 /* } */
 
 static int
-lc_cass_error_result_num_failures(lua_State *s) {
-	const CassErrorResult *err = *check_cass_error_result(s, 1);
-	cass_int32_t r = cass_error_result_num_failures(err);
-	lua_pushinteger(s, r);
-	return 1;
-}
-
-static int
 lc_cass_error_result_data_present(lua_State *s) {
 	const CassErrorResult *err = *check_cass_error_result(s, 1);
 	cass_bool_t r = cass_error_result_data_present(err);
@@ -3711,6 +3765,15 @@ lc_cass_error_result_write_type(lua_State *s) {
 	const CassErrorResult *err = *check_cass_error_result(s, 1);
 	CassWriteType wt = cass_error_result_write_type(err);
 	lua_pushinteger(s, wt);
+	return 1;
+}
+
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+static int
+lc_cass_error_result_num_failures(lua_State *s) {
+	const CassErrorResult *err = *check_cass_error_result(s, 1);
+	cass_int32_t r = cass_error_result_num_failures(err);
+	lua_pushinteger(s, r);
 	return 1;
 }
 
@@ -3766,6 +3829,7 @@ lc_cass_error_result_arg_type(lua_State *s) {
 	lua_pushlstring(s, arg_type, len);
 	return 2;
 }
+#endif
 
 static int
 lc_cass_iterator_free(lua_State *s) {
@@ -3815,115 +3879,138 @@ static int
 lc_cass_iterator_from_tuple(lua_State *s) {
 	const CassValue *c = *check_cass_value(s, 1);
 	CassIterator *it = cass_iterator_from_tuple(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_iterator_fields_from_user_type(lua_State *s) {
 	const CassValue *c = *check_cass_value(s, 1);
 	CassIterator *it = cass_iterator_fields_from_user_type(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_keyspaces_from_schema_meta(lua_State *s) {
 	const CassSchemaMeta *c = *check_cass_schema_meta(s, 1);
 	CassIterator *it = cass_iterator_keyspaces_from_schema_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_tables_from_keyspace_meta(lua_State *s) {
 	const CassKeyspaceMeta *c = *check_cass_keyspace_meta(s, 1);
 	CassIterator *it = cass_iterator_tables_from_keyspace_meta(c);
-	return new_cass_iterator(s, it);}
-
-static int
-lc_cass_iterator_materialized_views_from_keyspace_meta(lua_State *s) {
-	const CassKeyspaceMeta *c = *check_cass_keyspace_meta(s, 1);
-	CassIterator *it = cass_iterator_materialized_views_from_keyspace_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_user_types_from_keyspace_meta(lua_State *s) {
 	const CassKeyspaceMeta *c = *check_cass_keyspace_meta(s, 1);
 	CassIterator *it = cass_iterator_user_types_from_keyspace_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_functions_from_keyspace_meta(lua_State *s) {
 	const CassKeyspaceMeta *c = *check_cass_keyspace_meta(s, 1);
 	CassIterator *it = cass_iterator_functions_from_keyspace_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_aggregates_from_keyspace_meta(lua_State *s) {
 	const CassKeyspaceMeta *c = *check_cass_keyspace_meta(s, 1);
 	CassIterator *it = cass_iterator_aggregates_from_keyspace_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_fields_from_keyspace_meta(lua_State *s) {
 	const CassKeyspaceMeta *c = *check_cass_keyspace_meta(s, 1);
 	CassIterator *it = cass_iterator_fields_from_keyspace_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_columns_from_table_meta(lua_State *s) {
 	const CassTableMeta *c = *check_cass_table_meta(s, 1);
 	CassIterator *it = cass_iterator_columns_from_table_meta(c);
-	return new_cass_iterator(s, it);}
-
-static int
-lc_cass_iterator_indexes_from_table_meta(lua_State *s) {
-	const CassTableMeta *c = *check_cass_table_meta(s, 1);
-	CassIterator *it = cass_iterator_indexes_from_table_meta(c);
-	return new_cass_iterator(s, it);}
-
-static int
-lc_cass_iterator_materialized_views_from_table_meta(lua_State *s) {
-	const CassTableMeta *c = *check_cass_table_meta(s, 1);
-	CassIterator *it = cass_iterator_materialized_views_from_table_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_fields_from_table_meta(lua_State *s) {
 	const CassTableMeta *c = *check_cass_table_meta(s, 1);
 	CassIterator *it = cass_iterator_fields_from_table_meta(c);
-	return new_cass_iterator(s, it);}
-
-static int
-lc_cass_iterator_columns_from_materialized_view_meta(lua_State *s) {
-	const CassMaterializedViewMeta *c = *check_cass_materialized_view_meta(s, 1);
-	CassIterator *it = cass_iterator_columns_from_materialized_view_meta(c);
-	return new_cass_iterator(s, it);}
-
-static int
-lc_cass_iterator_fields_from_materialized_view_meta(lua_State *s) {
-	const CassMaterializedViewMeta *c = *check_cass_materialized_view_meta(s, 1);
-	CassIterator *it = cass_iterator_fields_from_materialized_view_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_fields_from_column_meta(lua_State *s) {
 	const CassColumnMeta *c = *check_cass_column_meta(s, 1);
 	CassIterator *it = cass_iterator_fields_from_column_meta(c);
-	return new_cass_iterator(s, it);}
-
-static int
-lc_cass_iterator_fields_from_index_meta(lua_State *s) {
-	const CassIndexMeta *c = *check_cass_index_meta(s, 1);
-	CassIterator *it = cass_iterator_fields_from_index_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_fields_from_function_meta(lua_State *s) {
 	const CassFunctionMeta *c = *check_cass_function_meta(s, 1);
 	CassIterator *it = cass_iterator_fields_from_function_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
 
 static int
 lc_cass_iterator_fields_from_aggregate_meta(lua_State *s) {
 	const CassAggregateMeta *c = *check_cass_aggregate_meta(s, 1);
 	CassIterator *it = cass_iterator_fields_from_aggregate_meta(c);
-	return new_cass_iterator(s, it);}
+	return new_cass_iterator(s, it);
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+static int
+lc_cass_iterator_materialized_views_from_keyspace_meta(lua_State *s) {
+	const CassKeyspaceMeta *c = *check_cass_keyspace_meta(s, 1);
+	CassIterator *it = cass_iterator_materialized_views_from_keyspace_meta(c);
+	return new_cass_iterator(s, it);
+}
+
+static int
+lc_cass_iterator_indexes_from_table_meta(lua_State *s) {
+	const CassTableMeta *c = *check_cass_table_meta(s, 1);
+	CassIterator *it = cass_iterator_indexes_from_table_meta(c);
+	return new_cass_iterator(s, it);
+}
+
+static int
+lc_cass_iterator_materialized_views_from_table_meta(lua_State *s) {
+	const CassTableMeta *c = *check_cass_table_meta(s, 1);
+	CassIterator *it = cass_iterator_materialized_views_from_table_meta(c);
+	return new_cass_iterator(s, it);
+}
+
+static int
+lc_cass_iterator_columns_from_materialized_view_meta(lua_State *s) {
+	const CassMaterializedViewMeta *c = *check_cass_materialized_view_meta(s, 1);
+	CassIterator *it = cass_iterator_columns_from_materialized_view_meta(c);
+	return new_cass_iterator(s, it);
+}
+
+static int
+lc_cass_iterator_fields_from_materialized_view_meta(lua_State *s) {
+	const CassMaterializedViewMeta *c = *check_cass_materialized_view_meta(s, 1);
+	CassIterator *it = cass_iterator_fields_from_materialized_view_meta(c);
+	return new_cass_iterator(s, it);
+}
+
+static int
+lc_cass_iterator_fields_from_index_meta(lua_State *s) {
+	const CassIndexMeta *c = *check_cass_index_meta(s, 1);
+	CassIterator *it = cass_iterator_fields_from_index_meta(c);
+	return new_cass_iterator(s, it);
+}
+#endif
 
 static int
 lc_cass_iterator_next(lua_State *s) {
@@ -3935,42 +4022,72 @@ lc_cass_iterator_next(lua_State *s) {
 
 static int
 lc_cass_iterator_get_row(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassIterator *
+#else
+	CassIterator *
+#endif
+	it = *check_cass_iterator(s, 1);
 	const CassRow *row = cass_iterator_get_row(it);
 	return new_cass_row(s, row);
 }
 
 static int
 lc_cass_iterator_get_column(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassIterator *
+#else
+	CassIterator *
+#endif
+	it = *check_cass_iterator(s, 1);
 	const CassValue *col = cass_iterator_get_column(it);
 	return new_cass_value(s, col);
 }
 
 static int
 lc_cass_iterator_get_value(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassIterator *
+#else
+	CassIterator *
+#endif
+	it = *check_cass_iterator(s, 1);
 	const CassValue *val = cass_iterator_get_value(it);
 	return new_cass_value(s, val);
 }
 
 static int
 lc_cass_iterator_get_map_key(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassIterator *
+#else
+	CassIterator *
+#endif
+	it = *check_cass_iterator(s, 1);
 	const CassValue *val = cass_iterator_get_map_key(it);
 	return new_cass_value(s, val);
 }
 
 static int
 lc_cass_iterator_get_map_value(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassIterator *
+#else
+	CassIterator *
+#endif
+	it = *check_cass_iterator(s, 1);
 	const CassValue *val = cass_iterator_get_map_value(it);
 	return new_cass_value(s, val);
 }
 
 static int
 lc_cass_iterator_get_user_type_field_name(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassIterator *
+#else
+	CassIterator *
+#endif
+	it = *check_cass_iterator(s, 1);
 	size_t len;
 	const char *name;
 	CassError e = cass_iterator_get_user_type_field_name(it, &name, &len);
@@ -3981,11 +4098,17 @@ lc_cass_iterator_get_user_type_field_name(lua_State *s) {
 
 static int
 lc_cass_iterator_get_user_type_field_value(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	const CassIterator *
+#else
+	CassIterator *
+#endif
+	it = *check_cass_iterator(s, 1);
 	const CassValue *val = cass_iterator_get_user_type_field_value(it);
 	return new_cass_value(s, val);
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_iterator_get_keyspace_meta(lua_State *s) {
 	const CassIterator *it = *check_cass_iterator(s, 1);
@@ -3998,13 +4121,6 @@ lc_cass_iterator_get_table_meta(lua_State *s) {
 	const CassIterator *it = *check_cass_iterator(s, 1);
 	const CassTableMeta *meta = cass_iterator_get_table_meta(it);
 	return new_cass_table_meta(s, meta);
-}
-
-static int
-lc_cass_iterator_get_materialized_view_meta(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
-	const CassMaterializedViewMeta *meta = cass_iterator_get_materialized_view_meta(it);
-	return new_cass_materialized_view_meta(s, meta);
 }
 
 static int
@@ -4036,13 +4152,6 @@ lc_cass_iterator_get_column_meta(lua_State *s) {
 }
 
 static int
-lc_cass_iterator_get_index_meta(lua_State *s) {
-	const CassIterator *it = *check_cass_iterator(s, 1);
-	const CassIndexMeta *meta = cass_iterator_get_index_meta(it);
-	return new_cass_index_meta(s, meta);
-}
-
-static int
 lc_cass_iterator_get_meta_field_name(lua_State *s) {
 	const CassIterator *it = *check_cass_iterator(s, 1);
 	size_t len;
@@ -4059,6 +4168,23 @@ lc_cass_iterator_get_meta_field_value(lua_State *s) {
 	const CassValue *val = cass_iterator_get_meta_field_value(it);
 	return new_cass_value(s, val);
 }
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+static int
+lc_cass_iterator_get_materialized_view_meta(lua_State *s) {
+	const CassIterator *it = *check_cass_iterator(s, 1);
+	const CassMaterializedViewMeta *meta = cass_iterator_get_materialized_view_meta(it);
+	return new_cass_materialized_view_meta(s, meta);
+}
+
+static int
+lc_cass_iterator_get_index_meta(lua_State *s) {
+	const CassIterator *it = *check_cass_iterator(s, 1);
+	const CassIndexMeta *meta = cass_iterator_get_index_meta(it);
+	return new_cass_index_meta(s, meta);
+}
+#endif
 
 static int
 lc_cass_row_get_column(lua_State *s) {
@@ -4084,6 +4210,7 @@ lc_cass_value_data_type(lua_State *s) {
 	return new_cass_data_type_ref(s, type);
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_value_get_int8(lua_State *s) {
 	const CassValue *val = *check_cass_value(s, 1);
@@ -4105,20 +4232,21 @@ lc_cass_value_get_int16(lua_State *s) {
 }
 
 static int
-lc_cass_value_get_int32(lua_State *s) {
-	const CassValue *val = *check_cass_value(s, 1);
-	cass_int32_t v;
-	CassError e = cass_value_get_int32(val, &v);
-	lua_pushinteger(s, e);
-	lua_pushinteger(s, v);
-	return 2;
-}
-
-static int
 lc_cass_value_get_uint32(lua_State *s) {
 	const CassValue *val = *check_cass_value(s, 1);
 	cass_uint32_t v;
 	CassError e = cass_value_get_uint32(val, &v);
+	lua_pushinteger(s, e);
+	lua_pushinteger(s, v);
+	return 2;
+}
+#endif
+
+static int
+lc_cass_value_get_int32(lua_State *s) {
+	const CassValue *val = *check_cass_value(s, 1);
+	cass_int32_t v;
+	CassError e = cass_value_get_int32(val, &v);
 	lua_pushinteger(s, e);
 	lua_pushinteger(s, v);
 	return 2;
@@ -4441,6 +4569,7 @@ lc_cass_retry_policy_free(lua_State *s) {
 	return 0;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_custom_payload_new(lua_State *s) {
 	CassCustomPayload *payload = cass_custom_payload_new();
@@ -4473,6 +4602,7 @@ lc_cass_custom_payload_set(lua_State *s) {
 	cass_custom_payload_set(p, name, val, vlen);
 	return 0;
 }
+#endif
 
 static int
 lc_cass_consistency_string(lua_State *s) {
@@ -4655,6 +4785,7 @@ lc_cass_log_level_string(lua_State *s) {
 /* 	return 1; */
 /* } */
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_date_from_epoch(lua_State *s) {
 	cass_int64_t epoch_secs = luaL_checkinteger(s, 1);
@@ -4679,6 +4810,7 @@ lc_cass_date_time_to_epoch(lua_State *s) {
 	lua_pushinteger(s, v);
 	return 1;
 }
+#endif
 
 static const struct luaL_reg
 functions[] = {
@@ -4700,8 +4832,9 @@ functions[] = {
 	{"cass_retry_policy_downgrading_consistency_new", lc_cass_retry_policy_downgrading_consistency_new},
 	{"cass_retry_policy_fallthrough_new", lc_cass_retry_policy_fallthrough_new},
 	{"cass_retry_policy_logging_new", lc_cass_retry_policy_logging_new},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"cass_custom_payload_new", lc_cass_custom_payload_new},
-
+#endif
 	/* {"cass_cluster_free", lc_cass_cluster_free}, */
 	/* {"cass_session_free", lc_cass_session_free}, */
 	/* {"cass_ssl_free", lc_cass_ssl_free}, */
@@ -4735,9 +4868,11 @@ functions[] = {
 	/* {"cass_inet_init_v6", lc_cass_inet_init_v6}, */
 	/* {"cass_inet_string", lc_cass_inet_string}, */
 	/* {"cass_inet_from_string", lc_cass_inet_from_string}, */
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"cass_date_from_epoch", lc_cass_date_from_epoch},
 	{"cass_time_from_epoch", lc_cass_time_from_epoch},
 	{"cass_date_time_to_epoch", lc_cass_date_time_to_epoch},
+#endif
 	{"cass_uuid_min_from_time", lc_cass_uuid_min_from_time},
 	{"cass_uuid_max_from_time", lc_cass_uuid_max_from_time},
 	{"cass_uuid_timestamp", lc_cass_uuid_timestamp},
@@ -4775,10 +4910,14 @@ cluster_methods[] = {
 	{"set_token_aware_routing", lc_cass_cluster_set_token_aware_routing},
 	{"set_latency_aware_routing", lc_cass_cluster_set_latency_aware_routing},
 	{"set_latency_aware_routing_settings", lc_cass_cluster_set_latency_aware_routing_settings},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"set_whitelist_filtering", lc_cass_cluster_set_whitelist_filtering},
+#endif
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	{"set_blacklist_filtering", lc_cass_cluster_set_blacklist_filtering},
-	{"set_whitelist_dc+filtering", lc_cass_cluster_set_whitelist_dc_filtering},
+	{"set_whitelist_dc_filtering", lc_cass_cluster_set_whitelist_dc_filtering},
 	{"set_blacklist_dc_filtering", lc_cass_cluster_set_blacklist_dc_filtering},
+#endif
 	{"set_tcp_nodelay", lc_cass_cluster_set_tcp_nodelay},
 	{"set_tcp_keepalive", lc_cass_cluster_set_tcp_keepalive},
 	{"set_timestamp_gen", lc_cass_cluster_set_timestamp_gen},
@@ -4797,31 +4936,42 @@ session_methods[] = {
 	{"prepare", lc_cass_session_prepare},
 	{"execute", lc_cass_session_execute},
 	{"execute_batch", lc_cass_session_execute_batch},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"get_schema_meta", lc_cass_session_get_schema_meta},
+#endif
 	{"get_metrics", lc_cass_session_get_metrics},
 	{NULL, NULL}
 };
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static const struct luaL_reg
 schema_meta_methods[] = {
 	{"snapshot_version", lc_cass_schema_meta_snapshot_version},
-	{"version", lc_cass_schema_meta_version},
 	{"keyspace_by_name", lc_cass_schema_meta_keyspace_by_name},
 	{"keyspaces_iterator", lc_cass_iterator_keyspaces_from_schema_meta},
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+	{"version", lc_cass_schema_meta_version},
+#endif
 	{NULL, NULL}
 };
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static const struct luaL_reg
 keyspace_meta_methods[] = {
 	{"name", lc_cass_keyspace_meta_name},
 	{"table_by_name", lc_cass_keyspace_meta_table_by_name},
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	{"materialized_view_by_name", lc_cass_keyspace_meta_materialized_view_by_name},
+#endif
 	{"user_type_by_name", lc_cass_keyspace_meta_user_type_by_name},
 	{"function_by_name", lc_cass_keyspace_meta_function_by_name},
 	{"aggregate_by_name", lc_cass_keyspace_meta_aggregate_by_name},
 	{"field_by_name", lc_cass_keyspace_meta_field_by_name},
 	{"tables_iterator", lc_cass_iterator_tables_from_keyspace_meta},
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	{"materialized_views_iterator", lc_cass_iterator_materialized_views_from_keyspace_meta},
+#endif
 	{"user_types_iterator", lc_cass_iterator_user_types_from_keyspace_meta},
 	{"functions_iterator", lc_cass_iterator_functions_from_keyspace_meta},
 	{"aggregates_iterator", lc_cass_iterator_aggregates_from_keyspace_meta},
@@ -4835,40 +4985,28 @@ table_meta_methods[] = {
 	{"name", lc_cass_table_meta_name},
 	{"column_count", lc_cass_table_meta_column_count},
 	{"column", lc_cass_table_meta_column},
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	{"index_by_name", lc_cass_table_meta_index_by_name},
 	{"index_count", lc_cass_table_meta_index_count},
 	{"index", lc_cass_table_meta_index},
 	{"materialized_view_by_name", lc_cass_table_meta_materialized_view_by_name},
 	{"meterialized_view_count", lc_cass_table_meta_meterialized_view_count},
 	{"meterialized_view", lc_cass_table_meta_meterialized_view},
+#endif
 	{"partition_key_count", lc_cass_table_meta_partition_key_count},
 	{"partition_key", lc_cass_table_meta_partition_key},
 	{"clustering_key_count", lc_cass_table_meta_clustering_key_count},
 	{"clustering_key", lc_cass_table_meta_clustering_key},
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	{"clustering_key_order", lc_cass_table_meta_clustering_key_order},
+#endif
 	{"field_by_name", lc_cass_table_meta_field_by_name},
 	{"columns_iterator", lc_cass_iterator_columns_from_table_meta},
 	{"fields_iterator", lc_cass_iterator_fields_from_table_meta},
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	{"indexes_iterator", lc_cass_iterator_indexes_from_table_meta},
 	{"materialized_views_iterator", lc_cass_iterator_materialized_views_from_table_meta},
-	{NULL, NULL}
-};
-
-static const struct luaL_reg
-materialized_view_meta_methods[] = {
-	{"column_by_name", lc_cass_materialized_view_meta_column_by_name},
-	{"name", lc_cass_materialized_view_meta_name},
-	{"base_table", lc_cass_materialized_view_meta_base_table},
-	{"column_count", lc_cass_materialized_view_meta_column_count},
-	{"column", lc_cass_materialized_view_meta_column},
-	{"partition_key_count", lc_cass_materialized_view_meta_partition_key_count},
-	{"partition_key", lc_cass_materialized_view_meta_partition_key},
-	{"clustering_key_count", lc_cass_materialized_view_meta_clustering_key_count},
-	{"clustering_key", lc_cass_materialized_view_meta_clustering_key},
-	{"clustering_key_order", lc_cass_materialized_view_meta_clustering_key_order},
-	{"field_by_name", lc_cass_materialized_view_meta_field_by_name},
-	{"fields_iterator", lc_cass_iterator_fields_from_materialized_view_meta},
-	{"columns_iterator", lc_cass_iterator_columns_from_materialized_view_meta},
+#endif
 	{NULL, NULL}
 };
 
@@ -4879,17 +5017,6 @@ column_meta_methods[] = {
 	{"data_type", lc_cass_column_meta_data_type},
 	{"field_by_name", lc_cass_column_meta_field_by_name},
 	{"fields_iterator", lc_cass_iterator_fields_from_column_meta},
-	{NULL, NULL}
-};
-
-static const struct luaL_reg
-index_meta_methods[] = {
-	{"name", lc_cass_index_meta_name},
-	{"type", lc_cass_index_meta_type},
-	{"target", lc_cass_index_meta_target},
-	{"options", lc_cass_index_meta_options},
-	{"field_by_name", lc_cass_index_meta_field_by_name},
-	{"fields_iterator", lc_cass_iterator_fields_from_index_meta},
 	{NULL, NULL}
 };
 
@@ -4924,6 +5051,38 @@ aggregate_meta_methods[] = {
 	{"fields_iterator", lc_cass_iterator_fields_from_aggregate_meta},
 	{NULL, NULL}
 };
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+static const struct luaL_reg
+materialized_view_meta_methods[] = {
+	{"column_by_name", lc_cass_materialized_view_meta_column_by_name},
+	{"name", lc_cass_materialized_view_meta_name},
+	{"base_table", lc_cass_materialized_view_meta_base_table},
+	{"column_count", lc_cass_materialized_view_meta_column_count},
+	{"column", lc_cass_materialized_view_meta_column},
+	{"partition_key_count", lc_cass_materialized_view_meta_partition_key_count},
+	{"partition_key", lc_cass_materialized_view_meta_partition_key},
+	{"clustering_key_count", lc_cass_materialized_view_meta_clustering_key_count},
+	{"clustering_key", lc_cass_materialized_view_meta_clustering_key},
+	{"clustering_key_order", lc_cass_materialized_view_meta_clustering_key_order},
+	{"field_by_name", lc_cass_materialized_view_meta_field_by_name},
+	{"fields_iterator", lc_cass_iterator_fields_from_materialized_view_meta},
+	{"columns_iterator", lc_cass_iterator_columns_from_materialized_view_meta},
+	{NULL, NULL}
+};
+
+static const struct luaL_reg
+index_meta_methods[] = {
+	{"name", lc_cass_index_meta_name},
+	{"type", lc_cass_index_meta_type},
+	{"target", lc_cass_index_meta_target},
+	{"options", lc_cass_index_meta_options},
+	{"field_by_name", lc_cass_index_meta_field_by_name},
+	{"fields_iterator", lc_cass_iterator_fields_from_index_meta},
+	{NULL, NULL}
+};
+#endif
 
 static const struct luaL_reg
 ssl_methods[] = {
@@ -4945,8 +5104,10 @@ future_methods[] = {
 	{"get_prepared", lc_cass_future_get_prepared},
 	{"error_code", lc_cass_future_error_code},
 	{"error_message", lc_cass_future_error_message},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"custom_payload_item_count", lc_cass_future_custom_payload_item_count},
 	{"custom_payload_item", lc_cass_future_custom_payload_item},
+#endif
 	{NULL, NULL}
 };
 
@@ -4961,17 +5122,21 @@ statement_methods[] = {
 	{"set_paging_state_token", lc_cass_statement_set_paging_state_token},
 	{"set_timestamp", lc_cass_statement_set_timestamp},
 	{"set_retry_policy", lc_cass_statement_set_retry_policy},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"set_custom_payload", lc_cass_statement_set_custom_payload},
+#endif
 	{"bind_null", lc_cass_statement_bind_null},
 	{"bind_null_by_name", lc_cass_statement_bind_null_by_name},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"bind_int8", lc_cass_statement_bind_int8},
 	{"bind_int8_by_name", lc_cass_statement_bind_int8_by_name},
 	{"bind_int16", lc_cass_statement_bind_int16},
 	{"bind_int16_by_name", lc_cass_statement_bind_int16_by_name},
-	{"bind_int32", lc_cass_statement_bind_int32},
-	{"bind_int32_by_name", lc_cass_statement_bind_int32_by_name},
 	{"bind_uint32", lc_cass_statement_bind_uint32},
 	{"bind_uint32_by_name", lc_cass_statement_bind_uint32_by_name},
+#endif
+	{"bind_int32", lc_cass_statement_bind_int32},
+	{"bind_int32_by_name", lc_cass_statement_bind_int32_by_name},
 	{"bind_int64", lc_cass_statement_bind_int64},
 	{"bind_int64_by_name", lc_cass_statement_bind_int64_by_name},
 	{"bind_float", lc_cass_statement_bind_float},
@@ -5014,7 +5179,9 @@ batch_methods[] = {
 	{"set_serial_consistency", lc_cass_batch_set_serial_consistency},
 	{"set_timestamp", lc_cass_batch_set_timestamp},
 	{"set_retry_policy", lc_cass_batch_set_retry_policy},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"set_custom_payload", lc_cass_batch_set_custom_payload},
+#endif
 	{"add_statement", lc_cass_batch_add_statement},
 	{NULL, NULL}
 };
@@ -5029,7 +5196,9 @@ data_type_methods[] = {
 	{"set_keyspace", lc_cass_data_type_set_keyspace},
 	{"class_name", lc_cass_data_type_class_name},
 	{"set_class_name", lc_cass_data_type_set_class_name},
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	{"sub_type_count", lc_cass_data_type_sub_type_count},
+#endif
 	/* {"cass_data_sub_type_count", lc_cass_data_sub_type_count}, */
 	{"sub_data_type", lc_cass_data_type_sub_data_type},
 	{"sub_data_type_by_name", lc_cass_data_type_sub_data_type_by_name},
@@ -5047,10 +5216,12 @@ data_type_methods[] = {
 static const struct luaL_reg
 collection_methods[] = {
 	{"data_type", lc_cass_collection_data_type},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"append_int8", lc_cass_collection_append_int8},
 	{"append_int16", lc_cass_collection_append_int16},
-	{"append_int32", lc_cass_collection_append_int32},
 	{"append_uint32", lc_cass_collection_append_uint32},
+#endif
+	{"append_int32", lc_cass_collection_append_int32},
 	{"append_int64", lc_cass_collection_append_int64},
 	{"append_float", lc_cass_collection_append_float},
 	{"append_double", lc_cass_collection_append_double},
@@ -5070,10 +5241,12 @@ static const struct luaL_reg
 tuple_methods[] = {
 	{"data_type", lc_cass_tuple_data_type},
 	{"set_null", lc_cass_tuple_set_null},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"set_int8", lc_cass_tuple_set_int8},
 	{"set_int16", lc_cass_tuple_set_int16},
-	{"set_int32", lc_cass_tuple_set_int32},
 	{"set_uint32", lc_cass_tuple_set_uint32},
+#endif
+	{"set_int32", lc_cass_tuple_set_int32},
 	{"set_int64", lc_cass_tuple_set_int64},
 	{"set_float", lc_cass_tuple_set_float},
 	{"set_double", lc_cass_tuple_set_double},
@@ -5094,14 +5267,16 @@ user_type_methods[] = {
 	{"data_type", lc_cass_user_type_data_type},
 	{"set_null", lc_cass_user_type_set_null},
 	{"set_null_by_name", lc_cass_user_type_set_null_by_name},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"set_int8", lc_cass_user_type_set_int8},
 	{"set_int8_by_name", lc_cass_user_type_set_int8_by_name},
 	{"set_int16", lc_cass_user_type_set_int16},
 	{"set_int16_by_name", lc_cass_user_type_set_int16_by_name},
-	{"set_int32", lc_cass_user_type_set_int32},
-	{"set_int32_by_name", lc_cass_user_type_set_int32_by_name},
 	{"set_uint32", lc_cass_user_type_set_uint32},
 	{"set_uint32_by_name", lc_cass_user_type_set_uint32_by_name},
+#endif
+	{"set_int32", lc_cass_user_type_set_int32},
+	{"set_int32_by_name", lc_cass_user_type_set_int32_by_name},
 	{"set_int64", lc_cass_user_type_set_int64},
 	{"set_int64_by_name", lc_cass_user_type_set_int64_by_name},
 	{"set_float", lc_cass_user_type_set_float},
@@ -5149,14 +5324,16 @@ error_result_methods[] = {
 	{"consistency", lc_cass_error_result_consistency},
 	/* {"responses_received", lc_cass_error_result_responses_received}, */
 	/* {"responses_required", lc_cass_error_result_responses_required}, */
-	{"num_failures", lc_cass_error_result_num_failures},
 	{"data_present", lc_cass_error_result_data_present},
 	{"write_type", lc_cass_error_result_write_type},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	{"num_failures", lc_cass_error_result_num_failures},
 	{"keyspace", lc_cass_error_result_keyspace},
 	{"table", lc_cass_error_result_table},
 	{"function", lc_cass_error_result_function},
 	{"num_arg_types", lc_cass_error_num_arg_types},
 	{"arg_type", lc_cass_error_result_arg_type},
+#endif
 	{NULL, NULL}
 };
 
@@ -5171,16 +5348,20 @@ iterator_methods[] = {
 	{"get_map_value", lc_cass_iterator_get_map_value},
 	{"get_user_type_field_name", lc_cass_iterator_get_user_type_field_name},
 	{"get_user_type_field_value", lc_cass_iterator_get_user_type_field_value},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
+	{"get_user_type", lc_cass_iterator_get_user_type},
 	{"get_keyspace_meta", lc_cass_iterator_get_keyspace_meta},
 	{"get_table_meta", lc_cass_iterator_get_table_meta},
-	{"get_materialized_view_meta", lc_cass_iterator_get_materialized_view_meta},
-	{"get_user_type", lc_cass_iterator_get_user_type},
 	{"get_function_meta", lc_cass_iterator_get_function_meta},
 	{"get_aggregate_meta", lc_cass_iterator_get_aggregate_meta},
 	{"get_column_meta", lc_cass_iterator_get_column_meta},
-	{"get_index_meta", lc_cass_iterator_get_index_meta},
 	{"get_meta_field_name", lc_cass_iterator_get_meta_field_name},
 	{"get_meta_field_value", lc_cass_iterator_get_meta_field_value},
+#endif
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+	{"get_materialized_view_meta", lc_cass_iterator_get_materialized_view_meta},
+	{"get_index_meta", lc_cass_iterator_get_index_meta},
+#endif
 	{NULL, NULL}
 };
 
@@ -5195,10 +5376,12 @@ row_methods[] = {
 static const struct luaL_reg
 value_methods[] = {
 	{"data_type", lc_cass_value_data_type},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"get_int8", lc_cass_value_get_int8},
 	{"get_int16", lc_cass_value_get_int16},
-	{"get_int32", lc_cass_value_get_int32},
 	{"get_uint32", lc_cass_value_get_uint32},
+#endif
+	{"get_int32", lc_cass_value_get_int32},
 	{"get_int64", lc_cass_value_get_int64},
 	{"get_float", lc_cass_value_get_float},
 	{"get_double", lc_cass_value_get_double},
@@ -5217,7 +5400,9 @@ value_methods[] = {
 	{"iterator_from_collection", lc_cass_iterator_from_collection},
 	{"iterator_from_tuple", lc_cass_iterator_from_tuple},
 	{"iterator_from_map", lc_cass_iterator_from_map},
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"iterator_fields_from_user_type", lc_cass_iterator_fields_from_user_type},
+#endif
 	{NULL, NULL}
 };
 
@@ -5229,11 +5414,13 @@ uuid_gen_methods[] = {
 	{NULL, NULL}
 };
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static const struct luaL_reg
 custom_payload_methods[] = {
 	{"set", lc_cass_custom_payload_set},
 	{NULL, NULL}
 };
+#endif
 
 static int
 read_only(lua_State *s) {
@@ -5423,6 +5610,7 @@ set_error_constants(lua_State *s) {
 	lua_pushinteger(s, CASS_ERROR_LIB_NO_PAGING_STATE);
 	lua_settable(s, -3);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	lua_pushstring(s, "LIB_PARAMETER_UNSET");
 	lua_pushinteger(s, CASS_ERROR_LIB_PARAMETER_UNSET);
 	lua_settable(s, -3);
@@ -5434,6 +5622,7 @@ set_error_constants(lua_State *s) {
 	lua_pushstring(s, "LIB_INVALID_FUTURE_TYPE");
 	lua_pushinteger(s, CASS_ERROR_LIB_INVALID_FUTURE_TYPE);
 	lua_settable(s, -3);
+#endif
 
 	lua_pushstring(s, "SERVER_SERVER_ERROR");
 	lua_pushinteger(s, CASS_ERROR_SERVER_SERVER_ERROR);
@@ -5471,6 +5660,7 @@ set_error_constants(lua_State *s) {
 	lua_pushinteger(s, CASS_ERROR_SERVER_READ_TIMEOUT);
 	lua_settable(s, -3);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	lua_pushstring(s, "SERVER_READ_FAILURE");
 	lua_pushinteger(s, CASS_ERROR_SERVER_READ_FAILURE);
 	lua_settable(s, -3);
@@ -5482,6 +5672,7 @@ set_error_constants(lua_State *s) {
 	lua_pushstring(s, "SERVER_WRITE_FAILURE");
 	lua_pushinteger(s, CASS_ERROR_SERVER_WRITE_FAILURE);
 	lua_settable(s, -3);
+#endif
 
 	lua_pushstring(s, "SERVER_SYNTAX_ERROR");
 	lua_pushinteger(s, CASS_ERROR_SERVER_SYNTAX_ERROR);
@@ -5626,6 +5817,7 @@ set_type_constants(lua_State *s) {
 	lua_pushinteger(s, CASS_VALUE_TYPE_INET);
 	lua_settable(s, -3);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	lua_pushstring(s, "VALUE_TYPE_DATE");
 	lua_pushinteger(s, CASS_VALUE_TYPE_DATE);
 	lua_settable(s, -3);
@@ -5641,6 +5833,7 @@ set_type_constants(lua_State *s) {
 	lua_pushstring(s, "VALUE_TYPE_TINY_INT");
 	lua_pushinteger(s, CASS_VALUE_TYPE_TINY_INT);
 	lua_settable(s, -3);
+#endif
 
 	lua_pushstring(s, "VALUE_TYPE_LIST");
 	lua_pushinteger(s, CASS_VALUE_TYPE_LIST);
@@ -5662,6 +5855,7 @@ set_type_constants(lua_State *s) {
 	lua_pushinteger(s, CASS_VALUE_TYPE_TUPLE);
 	lua_settable(s, -3);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	lua_pushstring(s, "INDEX_TYPE_UNKNOWN");
 	lua_pushinteger(s, CASS_INDEX_TYPE_UNKNOWN);
 	lua_settable(s, -3);
@@ -5677,7 +5871,9 @@ set_type_constants(lua_State *s) {
 	lua_pushstring(s, "INDEX_TYPE_COMPOSITES");
 	lua_pushinteger(s, CASS_INDEX_TYPE_COMPOSITES);
 	lua_settable(s, -3);
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	lua_pushstring(s, "COLUMN_TYPE_REGULAR");
 	lua_pushinteger(s, CASS_COLUMN_TYPE_REGULAR);
 	lua_settable(s, -3);
@@ -5693,10 +5889,13 @@ set_type_constants(lua_State *s) {
 	lua_pushstring(s, "COLUMN_TYPE_STATIC");
 	lua_pushinteger(s, CASS_COLUMN_TYPE_STATIC);
 	lua_settable(s, -3);
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 2)
 	lua_pushstring(s, "COLUMN_TYPE_COMPACT_VALUE");
 	lua_pushinteger(s, CASS_COLUMN_TYPE_COMPACT_VALUE);
 	lua_settable(s, -3);
+#endif
 
 	lua_pushstring(s, "VALUE_TYPE_LIST");
 	lua_pushinteger(s, CASS_VALUE_TYPE_LIST);
@@ -5742,6 +5941,7 @@ set_type_constants(lua_State *s) {
 	lua_pushinteger(s, CASS_ITERATOR_TYPE_TUPLE);
 	lua_settable(s, -3);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	lua_pushstring(s, "ITERATOR_TYPE_USER_TYPE_FIELD");
 	lua_pushinteger(s, CASS_ITERATOR_TYPE_USER_TYPE_FIELD);
 	lua_settable(s, -3);
@@ -5773,7 +5973,9 @@ set_type_constants(lua_State *s) {
 	lua_pushstring(s, "ITERATOR_TYPE_COLUMN_META");
 	lua_pushinteger(s, CASS_ITERATOR_TYPE_COLUMN_META);
 	lua_settable(s, -3);
+#endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	lua_pushstring(s, "ITERATOR_TYPE_INDEX_META");
 	lua_pushinteger(s, CASS_ITERATOR_TYPE_INDEX_META);
 	lua_settable(s, -3);
@@ -5781,6 +5983,7 @@ set_type_constants(lua_State *s) {
 	lua_pushstring(s, "ITERATOR_TYPE_MATERIALIZED_VIEW_META");
 	lua_pushinteger(s, CASS_ITERATOR_TYPE_MATERIALIZED_VIEW_META);
 	lua_settable(s, -3);
+#endif
 
 	lua_pushstring(s, "WRITE_TYPE_UKNOWN");
 	lua_pushinteger(s, CASS_WRITE_TYPE_UKNOWN);
@@ -5810,6 +6013,7 @@ set_type_constants(lua_State *s) {
 	lua_pushinteger(s, CASS_WRITE_TYPE_CAS);
 	lua_settable(s, -3);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 	lua_pushstring(s, "CLUSTERING_ORDER_NONE");
 	lua_pushinteger(s, CASS_CLUSTERING_ORDER_NONE);
 	lua_settable(s, -3);
@@ -5821,6 +6025,7 @@ set_type_constants(lua_State *s) {
 	lua_pushstring(s, "CLUSTERING_ORDER_DESC");
 	lua_pushinteger(s, CASS_CLUSTERING_ORDER_DESC);
 	lua_settable(s, -3);
+#endif
 
 	lua_settable(s, -3); /* metatable.__index = real-table */
 
@@ -5860,6 +6065,7 @@ luaopen_db_cassandra(lua_State *s) {
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, collection_methods, 0);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	luaL_newmetatable(s, "datastax.cass_custom_payload");
  	lua_pushstring(s, "__gc");
 	lua_pushcfunction(s, lc_cass_custom_payload_free);
@@ -5868,6 +6074,7 @@ luaopen_db_cassandra(lua_State *s) {
 	lua_pushvalue(s, -2);
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, custom_payload_methods, 0);
+#endif
 
 	luaL_newmetatable(s, "datastax.cass_data_type");
  	lua_pushstring(s, "__gc");
@@ -5934,6 +6141,7 @@ luaopen_db_cassandra(lua_State *s) {
 	lua_pushcfunction(s, lc_cass_retry_policy_free);
 	lua_settable(s, -3);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	luaL_newmetatable(s, "datastax.cass_schema_meta");
 	lua_pushstring(s, "__gc");
 	lua_pushcfunction(s, lc_cass_schema_meta_free);
@@ -5942,6 +6150,7 @@ luaopen_db_cassandra(lua_State *s) {
 	lua_pushvalue(s, -2);
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, schema_meta_methods, 0);
+#endif
 
 	luaL_newmetatable(s, "datastax.cass_session");
  	lua_pushstring(s, "__gc");
@@ -6002,6 +6211,7 @@ luaopen_db_cassandra(lua_State *s) {
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, uuid_gen_methods, 0);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	luaL_newmetatable(s, "datastax.cass_aggregate_meta");
 	lua_pushstring(s, "__index");
 	lua_pushvalue(s, -2);
@@ -6020,35 +6230,38 @@ luaopen_db_cassandra(lua_State *s) {
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, function_meta_methods, 0);
 
-	luaL_newmetatable(s, "datastax.cass_index_meta");
-	lua_pushstring(s, "__index");
-	lua_pushvalue(s, -2);
-	lua_settable(s, -3);
-	luaL_openlib(s, NULL, index_meta_methods, 0);
-
 	luaL_newmetatable(s, "datastax.cass_keyspace_meta");
 	lua_pushstring(s, "__index");
 	lua_pushvalue(s, -2);
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, keyspace_meta_methods, 0);
 
+	luaL_newmetatable(s, "datastax.cass_table_meta");
+	lua_pushstring(s, "__index");
+	lua_pushvalue(s, -2);
+	lua_settable(s, -3);
+	luaL_openlib(s, NULL, table_meta_methods, 0);
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
+	luaL_newmetatable(s, "datastax.cass_index_meta");
+	lua_pushstring(s, "__index");
+	lua_pushvalue(s, -2);
+	lua_settable(s, -3);
+	luaL_openlib(s, NULL, index_meta_methods, 0);
+
 	luaL_newmetatable(s, "datastax.cass_materialized_view_meta");
 	lua_pushstring(s, "__index");
 	lua_pushvalue(s, -2);
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, materialized_view_meta_methods, 0);
+#endif
 
 	luaL_newmetatable(s, "datastax.cass_row");
 	lua_pushstring(s, "__index");
 	lua_pushvalue(s, -2);
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, row_methods, 0);
-
-	luaL_newmetatable(s, "datastax.cass_table_meta");
-	lua_pushstring(s, "__index");
-	lua_pushvalue(s, -2);
-	lua_settable(s, -3);
-	luaL_openlib(s, NULL, table_meta_methods, 0);
 
 	luaL_newmetatable(s, "datastax.cass_value");
 	lua_pushstring(s, "__index");
