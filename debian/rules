@@ -7,6 +7,7 @@
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/default.mk
 
+export DEB_CFLAGS_MAINT_APPEND = -Wno-strict-aliasing -fno-strict-aliasing
 # see FEATURE AREAS in dpkg-buildflags(1)
 #export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
@@ -18,10 +19,14 @@ include /usr/share/dpkg/default.mk
 
 # main packaging script based on dh7 syntax
 %:
-	dh $@  --with autotools-dev
+	dh $@
 
 override_dh_auto_configure:
-	dh_auto_configure -- --libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
+	dh_auto_configure
+
+override_dh_auto_install:
+	make -C obj-$(DEB_HOST_MULTIARCH) DESTDIR=$(CURDIR)/debian/lua-cassandra-driver install
+	make -C obj-$(DEB_HOST_MULTIARCH) DESTDIR=$(CURDIR)/debian/lua-cassandra-driver install_link
 
 override_dh_auto_test:
 	@:

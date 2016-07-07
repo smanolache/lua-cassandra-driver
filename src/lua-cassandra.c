@@ -3,7 +3,7 @@
 #include <lualib.h>
 #include <cassandra.h>
 #include <string.h>
-#include <uuid/uuid.h>
+#include <uuid.h>
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <endian.h>
@@ -1825,7 +1825,7 @@ lc_cass_future_set_callback(lua_State *s) {
 	CassError e =
 		cass_future_set_callback(future->future,
 					 (CassFutureCallback)future_callback,
-					 (void *)future->ref);
+					 (void *)(uintptr_t)future->ref);
 	lua_pushinteger(s, e);
 	return 1;
 }
