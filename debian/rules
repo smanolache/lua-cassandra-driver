@@ -28,5 +28,8 @@ override_dh_auto_install:
 	make -C obj-$(DEB_HOST_MULTIARCH) DESTDIR=$(CURDIR)/debian/lua-cassandra-driver install
 	make -C obj-$(DEB_HOST_MULTIARCH) DESTDIR=$(CURDIR)/debian/lua-cassandra-driver install_link
 
+override_dh_auto_clean:
+	dh_auto_clean
+
 override_dh_auto_test:
 	@:
