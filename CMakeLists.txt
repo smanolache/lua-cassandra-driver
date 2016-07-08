@@ -152,7 +152,7 @@ elseif("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
     set(WARNING_COMPILER_FLAGS "${WARNING_COMPILER_FLAGS} -Wno-unused-local-typedefs")
   endif()
 
-  set(PROJECT_C_FLAGS "${CMAKE_C_FLAGS} ${PROJECT_C_FLAGS} ${WARNING_COMPILER_FLAGS} -Werror")
+  set(PROJECT_C_FLAGS "${CMAKE_C_FLAGS} ${PROJECT_C_FLAGS} ${WARNING_COMPILER_FLAGS} -Werror -Wno-strict-aliasing -fno-strict-aliasing")
   set(TEST_C_FLAGS "${TEST_C_FLAGS} ${WARNING_COMPILER_FLAGS}")
 elseif("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
   # Clang/Intel specific compiler options

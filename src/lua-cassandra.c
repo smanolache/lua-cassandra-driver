@@ -13,15 +13,67 @@
 #endif
 
 #define VERSION_NORM(a, b, c) 10000 * (a) + 100 * (b) + (c)
-#define CASS_DRV_V VERSION_NORM(CASS_VERSION_MAJOR, CASS_VERSION_MINOR, CASS_VERSION_PATH)
+#define CASS_DRV_V VERSION_NORM(CASS_VERSION_MAJOR, CASS_VERSION_MINOR, CASS_VERSION_PATCH)
 
 static pthread_mutex_t cb_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t log_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int auth_exchange_data_ndx = LUA_NOREF;
+#endif
 
 struct __CassFuture {
 	CassFuture *future;
 	int ref;
 };
+
+struct __CassCluster {
+	CassCluster *cluster;
+	int ref;
+};
+
+static void
+from_cass_inet(CassInet inet, char addr[], size_t len) {
+	if (sizeof(struct in_addr) == inet.address_length) {
+		if (NULL != inet_ntop(AF_INET, inet.address, addr, len))
+			return;
+		/* TODO */
+	}
+	if (sizeof(struct in6_addr) == inet.address_length) {
+		if (NULL != inet_ntop(AF_INET6, inet.address, addr, len))
+			return;
+		/* TODO */
+	}
+	/* TODO */
+}
+
+static int
+new_cass_cluster(lua_State *s, CassCluster *impl) {
+	if (NULL != impl) {
+		struct __CassCluster *cluster = (struct __CassCluster *)lua_newuserdata(s, sizeof(struct __CassCluster));
+		luaL_getmetatable(s, "datastax.cass_cluster");
+		lua_setmetatable(s, -2);
+		cluster->cluster = impl;
+		cluster->ref = LUA_NOREF;
+	} else
+		lua_pushnil(s);
+	return 1;
+}
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int
+new_cass_authenticator(lua_State *s, const CassAuthenticator *auth) {
+	if (NULL != auth) {
+		const CassAuthenticator **impl = (const CassAuthenticator **)
+			lua_newuserdata(s, sizeof(const CassAuthenticator *));
+		luaL_getmetatable(s, "datastax.cass_authenticator");
+		lua_setmetatable(s, -2);
+		*impl = auth;
+	} else
+		lua_pushnil(s);
+	return 1;
+}
+#endif
 
 static int
 new_cass_batch(lua_State *s, const CassBatch *batch) {
@@ -467,12 +519,21 @@ check_cass_batch(lua_State *s, int index) {
 	return (CassBatch **)ud;
 }
 
-static CassCluster **
+static struct __CassCluster *
 check_cass_cluster(lua_State *s, int index) {
 	void *ud = luaL_checkudata(s, index, "datastax.cass_cluster");
 	luaL_argcheck(s, NULL != ud, 1, "'cass_cluster' expected");
-	return (CassCluster **)ud;
+	return (struct __CassCluster *)ud;
 }
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static CassAuthenticator **
+check_cass_authenticator(lua_State *s, int index) {
+	void *ud = luaL_checkudata(s, index, "datastax.cass_authenticator");
+	luaL_argcheck(s, NULL != ud, 1, "'cass_authenticator' expected");
+	return (CassAuthenticator **)ud;
+}
+#endif
 
 static CassCollection **
 check_cass_collection(lua_State *s, int index) {
@@ -683,27 +744,24 @@ check_cass_value(lua_State *s, int index) {
 static int
 lc_cass_cluster_new(lua_State *s) {
 	CassCluster *cluster = cass_cluster_new();
-	if (NULL != cluster) {
-		CassCluster **impl = (CassCluster **)lua_newuserdata(s, sizeof(CassCluster *));
-		luaL_getmetatable(s, "datastax.cass_cluster");
-		lua_setmetatable(s, -2);
-		*impl = cluster;
-	} else
-		lua_pushnil(s);
-	return 1;
+	return new_cass_cluster(s, cluster);
 }
 
 static int
 lc_cass_cluster_free(lua_State *s) {
-	CassCluster **cluster = check_cass_cluster(s, 1);
-	cass_cluster_free(*cluster);
-	*cluster = NULL;
+	struct __CassCluster *cluster = check_cass_cluster(s, 1);
+	if (LUA_NOREF != cluster->ref) {
+		luaL_unref(s, LUA_REGISTRYINDEX, cluster->ref);
+		cluster->ref = LUA_NOREF;
+	}
+	cass_cluster_free(cluster->cluster);
+	cluster->cluster = NULL;
 	return 0;
 }
 
 static int
 lc_cass_cluster_set_contact_points(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	size_t len;
 	const char *contact_points = luaL_checklstring(s, 2, &len);
 	CassError err = cass_cluster_set_contact_points(cluster, contact_points);
@@ -713,7 +771,7 @@ lc_cass_cluster_set_contact_points(lua_State *s) {
 
 static int
 lc_cass_cluster_set_port(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	int port = (int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_port(cluster, port);
 	lua_pushinteger(s, err);
@@ -722,15 +780,284 @@ lc_cass_cluster_set_port(lua_State *s) {
 
 static int
 lc_cass_cluster_set_ssl(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	CassSsl *ssl = *check_cass_ssl(s, 2);
 	cass_cluster_set_ssl(cluster, ssl);
 	return 0;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static lua_State *auth_thread = NULL;
+static int auth_thread_ndx = LUA_NOREF;
+
+static pthread_mutex_t auth_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static void
+authenticator_initial_callback(CassAuthenticator *auth, uintptr_t ref) {
+	pthread_mutex_lock(&auth_mtx);
+
+	/* push the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table on the stack */
+	lua_rawgeti(auth_thread, LUA_REGISTRYINDEX, ref);
+
+	/* fetch the lua-callback from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "initial_cb");
+	lua_gettable(auth_thread, -2);
+
+	/* push the auth on the auth_thread stack */
+	new_cass_authenticator(auth_thread, auth);
+
+	/* fetch the data from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "data");
+	lua_gettable(auth_thread, -4);
+
+	/* remove the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table from the stack */
+	lua_remove(auth_thread, -4);
+
+	if (0 != lua_pcall(auth_thread, 2, 0, 0)) {
+		const char *err = lua_tostring(auth_thread, -1);
+		(void)err;
+		lua_pop(auth_thread, 1);
+	}
+
+	pthread_mutex_unlock(&auth_mtx);
+}
+
+static void
+authenticator_challenge_callback(CassAuthenticator *auth, uintptr_t ref,
+				 const char *token, size_t token_size) {
+	pthread_mutex_lock(&auth_mtx);
+
+	/* push the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table on the stack */
+	lua_rawgeti(auth_thread, LUA_REGISTRYINDEX, ref);
+
+	/* fetch the lua-callback from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "challenge_cb");
+	lua_gettable(auth_thread, -2);
+
+	/* push the auth on the auth_thread stack */
+	new_cass_authenticator(auth_thread, auth);
+
+	/* fetch the data from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "data");
+	lua_gettable(auth_thread, -4);
+
+	lua_pushlstring(auth_thread, token, token_size);
+
+	/* remove the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table from the stack */
+	lua_remove(auth_thread, -5);
+
+	if (0 != lua_pcall(auth_thread, 3, 0, 0)) {
+		const char *err = lua_tostring(auth_thread, -1);
+		(void)err;
+		lua_pop(auth_thread, 1);
+	}
+
+	pthread_mutex_unlock(&auth_mtx);
+}
+
+static void
+authenticator_success_callback(CassAuthenticator *auth, uintptr_t ref,
+			       const char *token, size_t token_size) {
+	pthread_mutex_lock(&auth_mtx);
+
+	/* push the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table on the stack */
+	lua_rawgeti(auth_thread, LUA_REGISTRYINDEX, ref);
+
+	/* fetch the lua-callback from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "success_cb");
+	lua_gettable(auth_thread, -2);
+
+	/* push the auth on the auth_thread stack */
+	new_cass_authenticator(auth_thread, auth);
+
+	/* fetch the data from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "data");
+	lua_gettable(auth_thread, -4);
+
+	lua_pushlstring(auth_thread, token, token_size);
+
+	/* remove the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table from the stack */
+	lua_remove(auth_thread, -5);
+
+	if (0 != lua_pcall(auth_thread, 3, 0, 0)) {
+		const char *err = lua_tostring(auth_thread, -1);
+		(void)err;
+		lua_pop(auth_thread, 1);
+	}
+
+	pthread_mutex_unlock(&auth_mtx);
+}
+
+static void
+authenticator_cleanup_callback(CassAuthenticator *auth, uintptr_t ref) {
+	pthread_mutex_lock(&auth_mtx);
+
+	/* push the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table on the stack */
+	lua_rawgeti(auth_thread, LUA_REGISTRYINDEX, ref);
+
+	/* fetch the lua-callback from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "cleanup_cb");
+	lua_gettable(auth_thread, -2);
+
+	/* push the auth on the auth_thread stack */
+	new_cass_authenticator(auth_thread, auth);
+
+	/* fetch the data from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "data");
+	lua_gettable(auth_thread, -4);
+
+	/* remove the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table from the stack */
+	lua_remove(auth_thread, -4);
+
+	if (0 != lua_pcall(auth_thread, 2, 0, 0)) {
+		const char *err = lua_tostring(auth_thread, -1);
+		(void)err;
+		lua_pop(auth_thread, 1);
+	}
+
+	pthread_mutex_unlock(&auth_mtx);
+}
+
+static void
+authenticator_data_cleanup_callback(uintptr_t ref) {
+	pthread_mutex_lock(&auth_mtx);
+
+	/* push the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table on the stack */
+	lua_rawgeti(auth_thread, LUA_REGISTRYINDEX, ref);
+
+	/* fetch the lua-callback from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "data_cleanup_cb");
+	lua_gettable(auth_thread, -2);
+
+	/* fetch the data from the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table and push it on the stack */
+	lua_pushstring(auth_thread, "data");
+	lua_gettable(auth_thread, -3);
+
+	/* remove the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_db, data}
+	   table from the stack */
+	lua_remove(auth_thread, -3);
+
+	if (0 != lua_pcall(auth_thread, 1, 0, 0)) {
+		const char *err = lua_tostring(auth_thread, -1);
+		(void)err;
+		lua_pop(auth_thread, 1);
+	}
+
+	pthread_mutex_unlock(&auth_mtx);
+}
+
+static int
+lc_cass_cluster_set_authenticator_callbacks(lua_State *s) {
+	struct __CassCluster *cluster = check_cass_cluster(s, 1);
+	CassAuthenticatorCallbacks cbs;
+
+	/* lock */
+	if (NULL == auth_thread) {
+		pthread_mutex_lock(&auth_mtx);
+		if (NULL == auth_thread) {
+			auth_thread = lua_newthread(s);
+			auth_thread_ndx = luaL_ref(s, LUA_REGISTRYINDEX);
+		}
+		pthread_mutex_unlock(&auth_mtx);
+	}
+	lua_newtable(s);
+	/* add the initial callback to the table */
+	lua_pushstring(s, "initial_cb");
+	lua_pushvalue(s, 2); /* 1st arg = cluster, 2nd arg = initial_cb */
+	lua_settable(s, -3);
+	/* add the challenge callback to the table */
+	lua_pushstring(s, "challenge_cb");
+	lua_pushvalue(s, 3); /* 3rd arg = challenge cb */
+	lua_settable(s, -3);
+	/* add the success callback to the table */
+	lua_pushstring(s, "success_cb");
+	lua_pushvalue(s, 4); /* 4th arg = success cb */
+	lua_settable(s, -3);
+	/* add the cleanup callback to the table */
+	lua_pushstring(s, "cleanup_cb");
+	lua_pushvalue(s, 5); /* 5th arg = cleanup cb */
+	lua_settable(s, -3);
+	/* add the data cleanup callback to the table */
+	lua_pushstring(s, "data_cleanup_cb");
+	lua_pushvalue(s, 6); /* 6th arg = data cleanup cb */
+	lua_settable(s, -3);
+	/* add the opaque data to the table */
+	lua_pushstring(s, "data");
+	lua_pushvalue(s, 7); /* 7th arg = opaque data */
+	lua_settable(s, -3);
+
+	/* store the
+	   {initial_cb, challenge_cb, success_cb, cleanup_cb, data_cleanup_cb, data}
+	   table in the registry */
+	if (LUA_NOREF != cluster->ref)
+		luaL_unref(s, LUA_REGISTRYINDEX, cluster->ref);
+	cluster->ref = luaL_ref(s, LUA_REGISTRYINDEX);
+	/* unlock */
+
+	cbs.initial_callback   = (CassAuthenticatorInitalCallback)authenticator_initial_callback;
+	cbs.challenge_callback = (CassAuthenticatorChallengeCallback)authenticator_challenge_callback;
+	cbs.success_callback   = (CassAuthenticatorSuccessCallback)authenticator_success_callback;
+	cbs.cleanup_callback   = (CassAuthenticatorCleanupCallback)authenticator_cleanup_callback;
+
+	/* set_authenticator_callbacks  changes the authenticator object within the cluster object
+	   therefore free the old reference first
+	 */
+	if (LUA_NOREF != auth_exchange_data_ndx) {
+		luaL_unref(s, LUA_REGISTRYINDEX, auth_exchange_data_ndx);
+		auth_exchange_data_ndx = LUA_NOREF;
+	}
+	CassError e = cass_cluster_set_authenticator_callbacks(
+		cluster->cluster, &cbs,
+		(CassAuthenticatorDataCleanupCallback)authenticator_data_cleanup_callback,
+		(void *)(uintptr_t)cluster->ref);
+
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
 static int
 lc_cass_cluster_set_protocol_version(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	int protocol_version = (int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_protocol_version(cluster, protocol_version);
 	lua_pushinteger(s, err);
@@ -739,7 +1066,7 @@ lc_cass_cluster_set_protocol_version(lua_State *s) {
 
 static int
 lc_cass_cluster_set_num_threads_io(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_threads = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_num_threads_io(cluster, num_threads);
 	lua_pushinteger(s, err);
@@ -748,7 +1075,7 @@ lc_cass_cluster_set_num_threads_io(lua_State *s) {
 
 static int
 lc_cass_cluster_set_queue_size_io(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int queue_size = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_queue_size_io(cluster, queue_size);
 	lua_pushinteger(s, err);
@@ -757,7 +1084,7 @@ lc_cass_cluster_set_queue_size_io(lua_State *s) {
 
 static int
 lc_cass_cluster_set_queue_size_event(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int queue_size = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_queue_size_event(cluster, queue_size);
 	lua_pushinteger(s, err);
@@ -766,7 +1093,7 @@ lc_cass_cluster_set_queue_size_event(lua_State *s) {
 
 /* static int */
 /* lc_cass_cluster_set_queue_size_log(lua_State *s) { */
-/*	CassCluster *cluster = *check_cass_cluster(s, 1); */
+/*	CassCluster *cluster = check_cass_cluster(s, 1)->cluster; */
 /* 	unsigned int queue_size = (unsigned int)luaL_checkinteger(s, 2); */
 /* 	CassError err = cass_cluster_set_queue_size_log(cluster, queue_size); */
 /* 	lua_pushinteger(s, err); */
@@ -775,7 +1102,7 @@ lc_cass_cluster_set_queue_size_event(lua_State *s) {
 
 static int
 lc_cass_cluster_set_core_connections_per_host(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_connections = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_core_connections_per_host(cluster, num_connections);
 	lua_pushinteger(s, err);
@@ -784,7 +1111,7 @@ lc_cass_cluster_set_core_connections_per_host(lua_State *s) {
 
 static int
 lc_cass_cluster_set_max_connections_per_host(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_connections = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_max_connections_per_host(cluster, num_connections);
 	lua_pushinteger(s, err);
@@ -793,7 +1120,7 @@ lc_cass_cluster_set_max_connections_per_host(lua_State *s) {
 
 static int
 lc_cass_cluster_set_reconnect_wait_time(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int wait_time = (unsigned int)luaL_checkinteger(s, 2);
 	cass_cluster_set_reconnect_wait_time(cluster, wait_time);
 	return 1;
@@ -801,7 +1128,7 @@ lc_cass_cluster_set_reconnect_wait_time(lua_State *s) {
 
 static int
 lc_cass_cluster_set_max_concurrent_creation(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_connections = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_max_concurrent_creation(cluster, num_connections);
 	lua_pushinteger(s, err);
@@ -810,7 +1137,7 @@ lc_cass_cluster_set_max_concurrent_creation(lua_State *s) {
 
 static int
 lc_cass_cluster_set_max_concurrent_requests_threshold(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_requests = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_max_concurrent_requests_threshold(cluster, num_requests);
 	lua_pushinteger(s, err);
@@ -819,7 +1146,7 @@ lc_cass_cluster_set_max_concurrent_requests_threshold(lua_State *s) {
 
 static int
 lc_cass_cluster_set_max_requests_per_flush(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_requests = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_max_requests_per_flush(cluster, num_requests);
 	lua_pushinteger(s, err);
@@ -828,7 +1155,7 @@ lc_cass_cluster_set_max_requests_per_flush(lua_State *s) {
 
 static int
 lc_cass_cluster_set_write_bytes_high_water_mark(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_bytes = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_write_bytes_high_water_mark(cluster, num_bytes);
 	lua_pushinteger(s, err);
@@ -837,7 +1164,7 @@ lc_cass_cluster_set_write_bytes_high_water_mark(lua_State *s) {
 
 static int
 lc_cass_cluster_set_write_bytes_low_water_mark(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_bytes = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_write_bytes_low_water_mark(cluster, num_bytes);
 	lua_pushinteger(s, err);
@@ -846,7 +1173,7 @@ lc_cass_cluster_set_write_bytes_low_water_mark(lua_State *s) {
 
 static int
 lc_cass_cluster_set_pending_requests_high_water_mark(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_requests = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_pending_requests_high_water_mark(cluster, num_requests);
 	lua_pushinteger(s, err);
@@ -855,7 +1182,7 @@ lc_cass_cluster_set_pending_requests_high_water_mark(lua_State *s) {
 
 static int
 lc_cass_cluster_set_pending_requests_low_water_mark(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int num_requests = (unsigned int)luaL_checkinteger(s, 2);
 	CassError err = cass_cluster_set_pending_requests_low_water_mark(cluster, num_requests);
 	lua_pushinteger(s, err);
@@ -864,7 +1191,7 @@ lc_cass_cluster_set_pending_requests_low_water_mark(lua_State *s) {
 
 static int
 lc_cass_cluster_set_connect_timeout(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int timeout_ms = (unsigned int)luaL_checkinteger(s, 2);
 	cass_cluster_set_connect_timeout(cluster, timeout_ms);
 	return 0;
@@ -872,7 +1199,7 @@ lc_cass_cluster_set_connect_timeout(lua_State *s) {
 
 static int
 lc_cass_cluster_set_request_timeout(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int timeout_ms = (unsigned int)luaL_checkinteger(s, 2);
 	cass_cluster_set_request_timeout(cluster, timeout_ms);
 	return 0;
@@ -880,57 +1207,71 @@ lc_cass_cluster_set_request_timeout(lua_State *s) {
 
 static int
 lc_cass_cluster_set_credentials(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	size_t len;
 	const char *username = luaL_checklstring(s, 2, &len);
 	const char *password = luaL_checklstring(s, 3, &len);
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	/* cass_cluster_set_credentials changes the authenticator object within the cluster object
+	   => unreference the old exchange data
+	 */
+	if (LUA_NOREF != auth_exchange_data_ndx) {
+		luaL_unref(s, LUA_REGISTRYINDEX, auth_exchange_data_ndx);
+		auth_exchange_data_ndx = LUA_NOREF;
+	}
+#endif
 	cass_cluster_set_credentials(cluster, username, password);
 	return 0;
 }
 
 static int
 lc_cass_cluster_set_load_balance_round_robin(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	cass_cluster_set_load_balance_round_robin(cluster);
 	return 0;
 }
 
 static int
 lc_cass_cluster_set_load_balance_dc_aware(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	cass_bool_t allow_remote_dcs_for_local_cl;
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	size_t dcl;
+	CassError err;
 	const char *local_dc = luaL_checklstring(s, 2, &dcl);
 	unsigned int used_hosts_per_remote_dc = (unsigned int)luaL_checkinteger(s, 3);
+
 	luaL_checktype(s, 4, LUA_TBOOLEAN);
-	cass_bool_t allow_remote_dcs_for_local_cl = (cass_bool_t)lua_toboolean(s, 4);
-	CassError err = cass_cluster_set_load_balance_dc_aware(cluster, local_dc,
-							       used_hosts_per_remote_dc,
-							       allow_remote_dcs_for_local_cl);
+	allow_remote_dcs_for_local_cl = (cass_bool_t)lua_toboolean(s, 4);
+	err = cass_cluster_set_load_balance_dc_aware(cluster, local_dc,
+						     used_hosts_per_remote_dc,
+						     allow_remote_dcs_for_local_cl);
 	lua_pushinteger(s, err);
 	return 1;
 }
 
 static int
 lc_cass_cluster_set_token_aware_routing(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
+	cass_bool_t enabled;
 	luaL_checktype(s, 2, LUA_TBOOLEAN);
-	cass_bool_t enabled = (cass_bool_t)lua_toboolean(s, 2);
+	enabled = (cass_bool_t)lua_toboolean(s, 2);
 	cass_cluster_set_token_aware_routing(cluster, enabled);
 	return 0;
 }
 
 static int
 lc_cass_cluster_set_latency_aware_routing(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	cass_bool_t enabled;
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	luaL_checktype(s, 2, LUA_TBOOLEAN);
-	cass_bool_t enabled = (cass_bool_t)lua_toboolean(s, 2);
+	enabled = (cass_bool_t)lua_toboolean(s, 2);
 	cass_cluster_set_latency_aware_routing(cluster, enabled);
 	return 0;
 }
 
 static int
 lc_cass_cluster_set_latency_aware_routing_settings(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	cass_double_t exclusion_threshold = (cass_double_t)luaL_checknumber(s, 2);
 	cass_uint64_t scale_ms = (cass_uint64_t)luaL_checkinteger(s, 3);
 	cass_uint64_t retry_period_ms = (cass_uint64_t)luaL_checkinteger(s, 4);
@@ -945,7 +1286,7 @@ lc_cass_cluster_set_latency_aware_routing_settings(lua_State *s) {
 #if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static int
 lc_cass_cluster_set_whitelist_filtering(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	size_t len;
 	const char *hosts = luaL_checklstring(s, 2, &len);
 	cass_cluster_set_whitelist_filtering(cluster, hosts);
@@ -956,7 +1297,7 @@ lc_cass_cluster_set_whitelist_filtering(lua_State *s) {
 #if CASS_DRV_V >= VERSION_NORM(2, 3, 0)
 static int
 lc_cass_cluster_set_blacklist_filtering(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	size_t len;
 	const char *hosts = luaL_checklstring(s, 2, &len);
 	cass_cluster_set_blacklist_filtering(cluster, hosts);
@@ -965,7 +1306,7 @@ lc_cass_cluster_set_blacklist_filtering(lua_State *s) {
 
 static int
 lc_cass_cluster_set_whitelist_dc_filtering(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	size_t len;
 	const char *dcs = luaL_checklstring(s, 2, &len);
 	cass_cluster_set_whitelist_dc_filtering(cluster, dcs);
@@ -974,7 +1315,7 @@ lc_cass_cluster_set_whitelist_dc_filtering(lua_State *s) {
 
 static int
 lc_cass_cluster_set_blacklist_dc_filtering(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	size_t len;
 	const char *hosts = luaL_checklstring(s, 2, &len);
 	cass_cluster_set_blacklist_dc_filtering(cluster, hosts);
@@ -984,26 +1325,29 @@ lc_cass_cluster_set_blacklist_dc_filtering(lua_State *s) {
 
 static int
 lc_cass_cluster_set_tcp_nodelay(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
+	cass_bool_t enabled;
 	luaL_checktype(s, 2, LUA_TBOOLEAN);
-	cass_bool_t enabled = (cass_bool_t)lua_toboolean(s, 2);
+	enabled = (cass_bool_t)lua_toboolean(s, 2);
 	cass_cluster_set_tcp_nodelay(cluster, enabled);
 	return 0;
 }
 
 static int
 lc_cass_cluster_set_tcp_keepalive(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	cass_bool_t enabled;
+	unsigned int delay_secs;
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	luaL_checktype(s, 2, LUA_TBOOLEAN);
-	cass_bool_t enabled = (cass_bool_t)lua_toboolean(s, 2);
-	unsigned int delay_secs = (unsigned int)luaL_checkinteger(s, 3);
+	enabled = (cass_bool_t)lua_toboolean(s, 2);
+	delay_secs = (unsigned int)luaL_checkinteger(s, 3);
 	cass_cluster_set_tcp_keepalive(cluster, enabled, delay_secs);
 	return 0;
 }
 
 static int
 lc_cass_cluster_set_timestamp_gen(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	CassTimestampGen *timestamp_gen = *check_cass_timestamp_gen(s, 2);
 	cass_cluster_set_timestamp_gen(cluster, timestamp_gen);
 	return 0;
@@ -1011,7 +1355,7 @@ lc_cass_cluster_set_timestamp_gen(lua_State *s) {
 
 static int
 lc_cass_cluster_set_connection_heartbeat_interval(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int interval_secs = (unsigned int)luaL_checkinteger(s, 2);
 	cass_cluster_set_connection_heartbeat_interval(cluster, interval_secs);
 	return 0;
@@ -1019,7 +1363,7 @@ lc_cass_cluster_set_connection_heartbeat_interval(lua_State *s) {
 
 static int
 lc_cass_cluster_set_connection_idle_timeout(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	unsigned int timeout_secs = (unsigned int)luaL_checkinteger(s, 2);
 	cass_cluster_set_connection_idle_timeout(cluster, timeout_secs);
 	return 0;
@@ -1027,7 +1371,7 @@ lc_cass_cluster_set_connection_idle_timeout(lua_State *s) {
 
 static int
 lc_cass_cluster_set_retry_policy(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	CassRetryPolicy *retry_policy = *check_cass_retry_policy(s, 2);
 	cass_cluster_set_retry_policy(cluster, retry_policy);
 	return 0;
@@ -1035,12 +1379,124 @@ lc_cass_cluster_set_retry_policy(lua_State *s) {
 
 static int
 lc_cass_cluster_set_use_schema(lua_State *s) {
-	CassCluster *cluster = *check_cass_cluster(s, 1);
+	cass_bool_t enabled;
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
 	luaL_checktype(s, 2, LUA_TBOOLEAN);
-	cass_bool_t enabled = (cass_bool_t)lua_toboolean(s, 2);
+	enabled = (cass_bool_t)lua_toboolean(s, 2);
 	cass_cluster_set_use_schema(cluster, enabled);
 	return 0;
 }
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int
+lc_cass_cluster_set_resolve_timeout(lua_State *s) {
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
+	unsigned int timeout_ms = (unsigned int)luaL_checkinteger(s, 2);
+	cass_cluster_set_resolve_timeout(cluster, timeout_ms);
+	return 0;
+}
+
+static int
+lc_cass_cluster_set_use_hostname_resolution(lua_State *s) {
+	CassCluster *cluster = check_cass_cluster(s, 1)->cluster;
+	cass_bool_t enabled = (unsigned int)lua_toboolean(s, 2);
+	CassError err = cass_cluster_set_use_hostname_resolution(cluster, enabled);
+	lua_pushinteger(s, err);
+	return 1;
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int
+lc_cass_authenticator_address(lua_State *s) {
+	const CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	char addr[INET6_ADDRSTRLEN];
+	CassInet v;
+	cass_authenticator_address(auth, &v);
+	from_cass_inet(v, addr, sizeof(addr));
+	lua_pushstring(s, addr);
+	return 1;
+}
+
+static int
+lc_cass_authenticator_hostname(lua_State *s) {
+	const CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	size_t len;
+	const char *hostname = cass_authenticator_hostname(auth, &len);
+	lua_pushlstring(s, hostname, len);
+	return 1;
+}
+
+static int
+lc_cass_authenticator_class_name(lua_State *s) {
+	const CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	size_t len;
+	const char *hostname = cass_authenticator_class_name(auth, &len);
+	lua_pushlstring(s, hostname, len);
+	return 1;
+}
+
+static int
+lc_cass_authenticator_exchange_data(lua_State *s) {
+	CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	int ref = (uintptr_t)cass_authenticator_exchange_data(auth);
+	if (LUA_NOREF != ref)
+		lua_rawgeti(s, LUA_REGISTRYINDEX, ref);
+	else
+		lua_pushnil(s);
+	return 1;
+}
+
+static int
+lc_cass_authenticator_set_exchange_data(lua_State *s) {
+	CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	size_t len;
+	const char *data = luaL_checklstring(s, 2, &len);
+
+	/* put the exchange data in the registry */
+	/* lua creates its own copy of it */
+	lua_pushlstring(s, data, len);
+	/* lock */
+	if (LUA_NOREF != auth_exchange_data_ndx)
+		luaL_unref(s, LUA_REGISTRYINDEX, auth_exchange_data_ndx);
+	auth_exchange_data_ndx = luaL_ref(s, LUA_REGISTRYINDEX);
+	/* unlock */
+
+	cass_authenticator_set_exchange_data(auth, (void *)(uintptr_t)auth_exchange_data_ndx);
+
+	return 0;
+}
+
+static int
+lc_cass_authenticator_response(lua_State *s) {
+	CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	size_t len = (size_t)luaL_checkinteger(s, 2);
+	char *response = cass_authenticator_response(auth, len);
+	if (NULL != response)
+		lua_pushlstring(s, response, len);
+	else
+		lua_pushnil(s);
+	return 1;
+}
+
+static int
+lc_cass_authenticator_set_response(lua_State *s) {
+	CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	size_t len;
+	const char *response = luaL_checklstring(s, 2, &len);
+	cass_authenticator_set_response(auth, response, len);
+	return 0;
+}
+
+static int
+lc_cass_authenticator_set_error(lua_State *s) {
+	CassAuthenticator *auth = *check_cass_authenticator(s, 1);
+	size_t len;
+	const char *message = luaL_checklstring(s, 2, &len);
+	cass_authenticator_set_error(auth, message);
+	return 0;
+}
+#endif
 
 static int
 lc_cass_session_new(lua_State *s) {
@@ -1066,7 +1522,7 @@ lc_cass_session_free(lua_State *s) {
 static int
 lc_cass_session_connect(lua_State *s) {
 	CassSession *session = *check_cass_session(s, 1);
-	const CassCluster *cluster = *check_cass_cluster(s, 2);
+	const CassCluster *cluster = check_cass_cluster(s, 2)->cluster;
 	CassFuture *future = cass_session_connect(session, cluster);
 	return new_cass_future(s, future);
 }
@@ -1074,7 +1530,7 @@ lc_cass_session_connect(lua_State *s) {
 static int
 lc_cass_session_connect_keyspace(lua_State *s) {
 	CassSession *session = *check_cass_session(s, 1);
-	const CassCluster *cluster = *check_cass_cluster(s, 2);
+	const CassCluster *cluster = check_cass_cluster(s, 2)->cluster;
 	size_t len;
 	const char *keyspace = luaL_checklstring(s, 3, &len);
 	CassFuture *future = cass_session_connect_keyspace(session, cluster, keyspace);
@@ -1838,6 +2294,7 @@ future_callback(CassFuture *dummy, int ref) {
 
 static int
 lc_cass_future_set_callback(lua_State *s) {
+	CassError e;
 	struct __CassFuture *future = check_cass_future(s, 1);
 
 	/* lock */
@@ -1868,10 +2325,8 @@ lc_cass_future_set_callback(lua_State *s) {
 	future->ref = luaL_ref(s, LUA_REGISTRYINDEX);
 	/* unlock */
 
-	CassError e =
-		cass_future_set_callback(future->future,
-					 (CassFutureCallback)future_callback,
-					 (void *)(uintptr_t)future->ref);
+	e = cass_future_set_callback(future->future, (CassFutureCallback)future_callback,
+				     (void *)(uintptr_t)future->ref);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -2074,6 +2529,17 @@ lc_cass_statement_set_custom_payload(lua_State *s) {
 }
 #endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 2)
+static int
+lc_cass_statement_set_request_timeout(lua_State *s) {
+	CassStatement *stmt = *check_cass_statement(s, 1);
+	cass_uint64_t timeout_ms = luaL_checkinteger(s, 3);
+	CassError e = cass_statement_set_request_timeout(stmt, timeout_ms);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
 static int
 lc_cass_statement_bind_null(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
@@ -2246,9 +2712,11 @@ static int
 lc_cass_statement_bind_bool(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
 	size_t index = (size_t)luaL_checkinteger(s, 2);
+	cass_bool_t v;
+	CassError e;
 	luaL_checktype(s, 3, LUA_TBOOLEAN);
-	cass_bool_t v = (cass_bool_t)lua_toboolean(s, 3);
-	CassError e = cass_statement_bind_bool(stmt, index, v);
+	v = (cass_bool_t)lua_toboolean(s, 3);
+	e = cass_statement_bind_bool(stmt, index, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -2257,10 +2725,12 @@ static int
 lc_cass_statement_bind_bool_by_name(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
 	size_t len;
+	cass_bool_t v;
+	CassError e;
 	const char *name = luaL_checklstring(s, 2, &len);
 	luaL_checktype(s, 3, LUA_TBOOLEAN);
-	cass_bool_t v = (cass_bool_t)lua_toboolean(s, 3);
-	CassError e = cass_statement_bind_bool_by_name(stmt, name, v);
+	v = (cass_bool_t)lua_toboolean(s, 3);
+	e = cass_statement_bind_bool_by_name(stmt, name, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -2400,21 +2870,6 @@ to_cass_inet(lua_State *s, int index) {
 	return inet;
 }
 
-static void
-from_cass_inet(CassInet inet, char addr[], size_t len) {
-	if (sizeof(struct in_addr) == inet.address_length) {
-		if (NULL != inet_ntop(AF_INET, inet.address, addr, len))
-			return;
-		/* TODO */
-	}
-	if (sizeof(struct in6_addr) == inet.address_length) {
-		if (NULL != inet_ntop(AF_INET6, inet.address, addr, len))
-			return;
-		/* TODO */
-	}
-	/* TODO */
-}
-
 static int
 lc_cass_statement_bind_uuid(lua_State *s) {
 	CassStatement *stmt = *check_cass_statement(s, 1);
@@ -2545,6 +3000,44 @@ lc_cass_statement_bind_user_type_by_name(lua_State *s) {
 	return 1;
 }
 
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int
+lc_cass_statement_bind_custom(lua_State *s) {
+	CassStatement *stmt = *check_cass_statement(s, 1);
+	size_t index = (size_t)luaL_checkinteger(s, 2);
+	size_t cn_len;
+	const char *class_name = luaL_checklstring(s, 3, &cn_len);
+	size_t value_size;
+	const cass_byte_t *value = (const cass_byte_t *)luaL_checklstring(s, 4, &value_size);
+	CassError e = cass_statement_bind_custom(stmt, index, class_name, value, value_size);
+	lua_pushinteger(s, e);
+	return 1;
+}
+
+static int
+lc_cass_statement_bind_custom_by_name(lua_State *s) {
+	CassStatement *stmt = *check_cass_statement(s, 1);
+	size_t len;
+	const char *name = luaL_checklstring(s, 2, &len);
+	size_t cn_len;
+	const char *class_name = luaL_checklstring(s, 3, &cn_len);
+	size_t value_size;
+	const cass_byte_t *value = (const cass_byte_t *)luaL_checklstring(s, 4, &value_size);
+	CassError e = cass_statement_bind_custom_by_name(stmt, name, class_name, value, value_size);
+	lua_pushinteger(s, e);
+	return 1;
+}
+
+static int
+lc_cass_statement_reset_parameters(lua_State *s) {
+	CassStatement *stmt = *check_cass_statement(s, 1);
+	size_t count = luaL_checkinteger(s, 2);
+	CassError e = cass_statement_reset_parameters(stmt, count);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
 static int
 lc_cass_prepared_free(lua_State *s) {
 	CassPrepared **prepared = check_cass_prepared(s, 1);
@@ -2648,6 +3141,17 @@ lc_cass_batch_set_custom_payload(lua_State *s) {
 	CassBatch *batch = *check_cass_batch(s, 1);
 	const CassCustomPayload *payload = *check_cass_custom_payload(s, 2);
 	CassError e = cass_batch_set_custom_payload(batch, payload);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 2)
+static int
+lc_cass_batch_set_request_timeout(lua_State *s) {
+	CassBatch *stmt = *check_cass_batch(s, 1);
+	cass_uint64_t timeout_ms = luaL_checkinteger(s, 3);
+	CassError e = cass_batch_set_request_timeout(stmt, timeout_ms);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -2955,9 +3459,11 @@ lc_cass_collection_append_double(lua_State *s) {
 static int
 lc_cass_collection_append_bool(lua_State *s) {
 	CassCollection *c = *check_cass_collection(s, 1);
+	cass_bool_t v;
+	CassError e;
 	luaL_checktype(s, 2, LUA_TBOOLEAN);
-	cass_bool_t v = lua_toboolean(s, 2);
-	CassError e = cass_collection_append_bool(c, v);
+	v = lua_toboolean(s, 2);
+	e = cass_collection_append_bool(c, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -2994,7 +3500,7 @@ lc_cass_collection_append_uuid(lua_State *s) {
 static int
 lc_cass_collection_append_inet(lua_State *s) {
 	CassCollection *c = *check_cass_collection(s, 1);
-	CassInet v = to_cass_inet(s, 2);;
+	CassInet v = to_cass_inet(s, 2);
 	CassError e = cass_collection_append_inet(c, v);
 	lua_pushinteger(s, e);
 	return 1;
@@ -3037,6 +3543,20 @@ lc_cass_collection_append_user_type(lua_State *s) {
 	lua_pushinteger(s, e);
 	return 1;
 }
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int
+lc_cass_collection_append_custom(lua_State *s) {
+	CassCollection *c = *check_cass_collection(s, 1);
+	size_t cn_len;
+	const char *class_name = luaL_checklstring(s, 2, &cn_len);
+	size_t value_length;
+	const cass_byte_t *value = (const cass_byte_t *)luaL_checklstring(s, 3, &value_length);
+	CassError e = cass_collection_append_custom(c, class_name, value, value_length);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
 
 static int
 lc_cass_tuple_new(lua_State *s) {
@@ -3152,9 +3672,11 @@ static int
 lc_cass_tuple_set_bool(lua_State *s) {
 	CassTuple *tuple = *check_cass_tuple(s, 1);
 	size_t index = luaL_checkinteger(s, 2);
+	cass_bool_t v;
+	CassError e;
 	luaL_checktype(s, 3, LUA_TBOOLEAN);
-	cass_bool_t v = lua_toboolean(s, 3);
-	CassError e = cass_tuple_set_bool(tuple, index, v);
+	v = lua_toboolean(s, 3);
+	e = cass_tuple_set_bool(tuple, index, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -3242,6 +3764,21 @@ lc_cass_tuple_set_user_type(lua_State *s) {
 	lua_pushinteger(s, e);
 	return 1;
 }
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int
+lc_cass_tuple_set_custom(lua_State *s) {
+	CassTuple *tuple = *check_cass_tuple(s, 1);
+	size_t index = luaL_checkinteger(s, 2);
+	size_t cn_len;
+	const char *class_name = luaL_checklstring(s, 3, &cn_len);
+	size_t value_length;
+	const cass_byte_t *value = (const cass_byte_t *)luaL_checklstring(s, 4, &value_length);
+	CassError e = cass_tuple_set_custom(tuple, index, class_name, value, value_length);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
 
 static int
 lc_cass_user_type_new_from_data_type(lua_State *s) {
@@ -3437,9 +3974,11 @@ static int
 lc_cass_user_type_set_bool(lua_State *s) {
 	CassUserType *ut = *check_cass_user_type(s, 1);
 	size_t index = luaL_checkinteger(s, 2);
+	cass_bool_t v;
+	CassError e;
 	luaL_checktype(s, 3, LUA_TBOOLEAN);
-	cass_bool_t v = lua_toboolean(s, 3);
-	CassError e = cass_user_type_set_bool(ut, index, v);
+	v = lua_toboolean(s, 3);
+	e = cass_user_type_set_bool(ut, index, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -3448,10 +3987,12 @@ static int
 lc_cass_user_type_set_bool_by_name(lua_State *s) {
 	CassUserType *ut = *check_cass_user_type(s, 1);
 	size_t len;
+	cass_bool_t v;
+	CassError e;
 	const char *index = luaL_checklstring(s, 2, &len);
 	luaL_checktype(s, 3, LUA_TBOOLEAN);
-	cass_bool_t v = lua_toboolean(s, 3);
-	CassError e = cass_user_type_set_bool_by_name(ut, index, v);
+	v = lua_toboolean(s, 3);
+	e = cass_user_type_set_bool_by_name(ut, index, v);
 	lua_pushinteger(s, e);
 	return 1;
 }
@@ -3630,6 +4171,34 @@ lc_cass_user_type_set_user_type_by_name(lua_State *s) {
 	lua_pushinteger(s, e);
 	return 1;
 }
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static int
+lc_cass_user_type_set_custom(lua_State *s) {
+	CassUserType *ut = *check_cass_user_type(s, 1);
+	size_t index = luaL_checkinteger(s, 2);
+	size_t cn_len;
+	const char *class_name = luaL_checklstring(s, 3, &cn_len);
+	size_t value_length;
+	const cass_byte_t *value = (const cass_byte_t *)luaL_checklstring(s, 4, &value_length);
+	CassError e = cass_user_type_set_custom(ut, index, class_name, value, value_length);
+	lua_pushinteger(s, e);
+	return 1;
+}
+
+static int
+lc_cass_user_type_set_custom_by_name(lua_State *s) {
+	CassUserType *ut = *check_cass_user_type(s, 1);
+	size_t index = luaL_checkinteger(s, 2);
+	size_t cn_len;
+	const char *class_name = luaL_checklstring(s, 3, &cn_len);
+	size_t value_length;
+	const cass_byte_t *value = (const cass_byte_t *)luaL_checklstring(s, 4, &value_length);
+	CassError e = cass_user_type_set_custom(ut, index, class_name, value, value_length);
+	lua_pushinteger(s, e);
+	return 1;
+}
+#endif
 
 static int
 lc_cass_result_free(lua_State *s) {
@@ -4604,6 +5173,17 @@ lc_cass_custom_payload_set(lua_State *s) {
 }
 #endif
 
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 2)
+static int
+lc_cass_custom_payload_remove(lua_State *s) {
+	CassCustomPayload *p = *check_cass_custom_payload(s, 1);
+	size_t len;
+	const char *name = luaL_checklstring(s, 2, &len);
+	cass_custom_payload_remove(p, name);
+	return 0;
+}
+#endif
+
 static int
 lc_cass_consistency_string(lua_State *s) {
 	CassConsistency c = luaL_checkinteger(s, 1);
@@ -4925,6 +5505,11 @@ cluster_methods[] = {
 	{"set_connection_idle_timeout", lc_cass_cluster_set_connection_idle_timeout},
 	{"set_retry_policy", lc_cass_cluster_set_retry_policy},
 	{"set_use_schema", lc_cass_cluster_set_use_schema},
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	{"set_authenticator_callbacks", lc_cass_cluster_set_authenticator_callbacks},
+	{"set_resolve_timeout", lc_cass_cluster_set_resolve_timeout},
+	{"set_use_hostname_resolution", lc_cass_cluster_set_use_hostname_resolution},
+#endif
 	{NULL, NULL}
 };
 
@@ -4942,6 +5527,21 @@ session_methods[] = {
 	{"get_metrics", lc_cass_session_get_metrics},
 	{NULL, NULL}
 };
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+static const struct luaL_reg
+authenticator_methods[] = {
+	{"address", lc_cass_authenticator_address},
+	{"hostname", lc_cass_authenticator_hostname},
+	{"class_name", lc_cass_authenticator_class_name},
+	{"exchange_data", lc_cass_authenticator_exchange_data},
+	{"set_exchange_data", lc_cass_authenticator_set_exchange_data},
+	{"response", lc_cass_authenticator_response},
+	{"set_response", lc_cass_authenticator_set_response},
+	{"set_error", lc_cass_authenticator_set_error},
+	{NULL, NULL}
+};
+#endif
 
 #if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 static const struct luaL_reg
@@ -5125,6 +5725,9 @@ statement_methods[] = {
 #if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"set_custom_payload", lc_cass_statement_set_custom_payload},
 #endif
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 2)
+	{"set_request_timeout", lc_cass_statement_set_request_timeout},
+#endif
 	{"bind_null", lc_cass_statement_bind_null},
 	{"bind_null_by_name", lc_cass_statement_bind_null_by_name},
 #if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
@@ -5161,6 +5764,11 @@ statement_methods[] = {
 	{"bind_tuple_by_name", lc_cass_statement_bind_tuple_by_name},
 	{"bind_user_type", lc_cass_statement_bind_user_type},
 	{"bind_user_type_by_name", lc_cass_statement_bind_user_type_by_name},
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	{"bind_custom", lc_cass_statement_bind_custom},
+	{"bind_custom_by_name", lc_cass_statement_bind_custom_by_name},
+	{"reset_parameters", lc_cass_statement_reset_parameters},
+#endif
 	{NULL, NULL}
 };
 
@@ -5181,6 +5789,9 @@ batch_methods[] = {
 	{"set_retry_policy", lc_cass_batch_set_retry_policy},
 #if CASS_DRV_V >= VERSION_NORM(2, 2, 0)
 	{"set_custom_payload", lc_cass_batch_set_custom_payload},
+#endif
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 2)
+	{"set_request_timeout", lc_cass_batch_set_request_timeout},
 #endif
 	{"add_statement", lc_cass_batch_add_statement},
 	{NULL, NULL}
@@ -5234,6 +5845,9 @@ collection_methods[] = {
 	{"append_collection", lc_cass_collection_append_collection},
 	{"append_tuple", lc_cass_collection_append_tuple},
 	{"append_user_type", lc_cass_collection_append_user_type},
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	{"append_custom", lc_cass_collection_append_custom},
+#endif
 	{NULL, NULL}
 };
 
@@ -5259,6 +5873,9 @@ tuple_methods[] = {
 	{"set_collection", lc_cass_tuple_set_collection},
 	{"set_tuple", lc_cass_tuple_set_tuple},
 	{"set_user_type", lc_cass_tuple_set_user_type},
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	{"set_custom", lc_cass_tuple_set_custom},
+#endif
 	{NULL, NULL}
 };
 
@@ -5301,6 +5918,10 @@ user_type_methods[] = {
 	{"set_tuple_by_name", lc_cass_user_type_set_tuple_by_name},
 	{"set_user_type", lc_cass_user_type_set_user_type},
 	{"set_user_type_by_name", lc_cass_user_type_set_user_type_by_name},
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	{"set_custom", lc_cass_user_type_set_custom},
+	{"set_custom_by_name", lc_cass_user_type_set_custom_by_name},
+#endif
 	{NULL, NULL}
 };
 
@@ -5418,6 +6039,9 @@ uuid_gen_methods[] = {
 static const struct luaL_reg
 custom_payload_methods[] = {
 	{"set", lc_cass_custom_payload_set},
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 2)
+	{"remove", lc_cass_custom_payload_remove},
+#endif
 	{NULL, NULL}
 };
 #endif
@@ -5622,6 +6246,35 @@ set_error_constants(lua_State *s) {
 	lua_pushstring(s, "LIB_INVALID_FUTURE_TYPE");
 	lua_pushinteger(s, CASS_ERROR_LIB_INVALID_FUTURE_TYPE);
 	lua_settable(s, -3);
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	lua_pushstring(s, "LIB_INTERNAL_ERROR");
+	lua_pushinteger(s, CASS_ERROR_LIB_INTERNAL_ERROR);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LIB_INVALID_CUSTOM_TYPE");
+	lua_pushinteger(s, CASS_ERROR_LIB_INVALID_CUSTOM_TYPE);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LIB_INVALID_DATA");
+	lua_pushinteger(s, CASS_ERROR_LIB_INVALID_DATA);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LIB_NOT_ENOUGH_DATA");
+	lua_pushinteger(s, CASS_ERROR_LIB_NOT_ENOUGH_DATA);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LIB_INVALID_INVALID_STATE");
+	lua_pushinteger(s, CASS_ERROR_LIB_INVALID_STATE);
+	lua_settable(s, -3);
+#endif
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 1)
+	lua_pushstring(s, "LIB_NO_CUSTOM_PAYLOAD");
+	lua_pushinteger(s, CASS_ERROR_LIB_NO_CUSTOM_PAYLOAD);
+	lua_settable(s, -3);
+
 #endif
 
 	lua_pushstring(s, "SERVER_SERVER_ERROR");
@@ -6034,6 +6687,95 @@ set_type_constants(lua_State *s) {
 	return 1;
 }
 
+static int
+set_constants(lua_State *s) {
+	lua_newtable(s); /* proxy table */
+	luaL_newmetatable(s, "datastax.cassandra.CONSTANTS");
+
+	lua_pushstring(s, "__newindex");
+	lua_pushcfunction(s, &read_only);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "__metatable");
+	lua_pushnil(s);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "__index");
+	lua_newtable(s); /* real table */
+
+	lua_pushstring(s, "SSL_VERIFY_NONE");
+	lua_pushinteger(s, CASS_SSL_VERIFY_NONE);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "SSL_VERIFY_PEER_CERT");
+	lua_pushinteger(s, CASS_SSL_VERIFY_PEER_CERT);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "SSL_VERIFY_PEER_IDENTITY");
+	lua_pushinteger(s, CASS_SSL_VERIFY_PEER_IDENTITY);
+	lua_settable(s, -3);
+
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	lua_pushstring(s, "SSL_VERIFY_PEER_IDENTITY_DNS");
+	lua_pushinteger(s, CASS_SSL_VERIFY_PEER_IDENTITY_DNS);
+	lua_settable(s, -3);
+#endif
+
+	lua_pushstring(s, "LOG_DISABLED");
+	lua_pushinteger(s, CASS_LOG_DISABLED);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LOG_CRITICAL");
+	lua_pushinteger(s, CASS_LOG_CRITICAL);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LOG_ERROR");
+	lua_pushinteger(s, CASS_LOG_ERROR);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LOG_WARN");
+	lua_pushinteger(s, CASS_LOG_WARN);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LOG_INFO");
+	lua_pushinteger(s, CASS_LOG_INFO);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LOG_DEBUG");
+	lua_pushinteger(s, CASS_LOG_DEBUG);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "LOG_TRACE");
+	lua_pushinteger(s, CASS_LOG_TRACE);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "ERROR_SOURCE_NONE");
+	lua_pushinteger(s, CASS_ERROR_SOURCE_NONE);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "ERROR_SOURCE_LIB");
+	lua_pushinteger(s, CASS_ERROR_SOURCE_LIB);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "ERROR_SOURCE_SERVER");
+	lua_pushinteger(s, CASS_ERROR_SOURCE_SERVER);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "ERROR_SOURCE_SSL");
+	lua_pushinteger(s, CASS_ERROR_SOURCE_SSL);
+	lua_settable(s, -3);
+
+	lua_pushstring(s, "ERROR_SOURCE_COMPRESSION");
+	lua_pushinteger(s, CASS_ERROR_SOURCE_COMPRESSION);
+	lua_settable(s, -3);
+
+	lua_settable(s, -3); /* metatable.__index = real-table */
+
+	lua_setmetatable(s, -2); /* proxy-table.metatable = metatable */
+
+	return 1;
+}
+
 int
 luaopen_db_cassandra(lua_State *s) {
 	lua_checkstack(s, 200);
@@ -6269,6 +7011,14 @@ luaopen_db_cassandra(lua_State *s) {
 	lua_settable(s, -3);
 	luaL_openlib(s, NULL, value_methods, 0);
 
+#if CASS_DRV_V >= VERSION_NORM(2, 4, 0)
+	luaL_newmetatable(s, "datastax.cass_authenticator");
+	lua_pushstring(s, "__index");
+	lua_pushvalue(s, -2);
+	lua_settable(s, -3);
+	luaL_openlib(s, NULL, authenticator_methods, 0);
+#endif
+
 	luaL_openlib(s, "db_cassandra", functions, 0);
 
 	/* constants */
@@ -6286,6 +7036,11 @@ luaopen_db_cassandra(lua_State *s) {
 	/* types */
 	lua_pushstring(s, "TYPES");
 	set_type_constants(s);
+	lua_settable(s, -3);
+
+	/* constants */
+	lua_pushstring(s, "CONSTANTS");
+	set_constants(s);
 	lua_settable(s, -3);
 
 	return 1;
