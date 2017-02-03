@@ -1,15 +1,22 @@
+IMPORTANT
+=========
+
+This is just a _wrapper_ around the driver written by datastax.
+
+The datastax driver makes _blocking calls_ to the database.
+
+Therefore, this lua wrapper _may block the event loop_ of event-driven
+systems, such as nginx.
+
 Build
 =====
 
 Install the C/C++ datastax cassandra driver. Use tag 2.3.0.
 
-cd /path/to/source/tree
-autoreconf -i -s
-
 mkdir /path/to/build/tree
 cd /path/to/build/tree
 # on multiarch amd64:
-/path/to/source/tree/configure --libdir=/usr/lib/x86_64-linux-gnu
+cmake /path/to/source/tree
 make
 
 Install
